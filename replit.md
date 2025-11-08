@@ -144,7 +144,15 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Due date tracking with overdue indicators
 - Auto-change to Priority Echo when marked complete
 - Completion checkbox
-- Filter by status and priority
+- **Filtering**:
+  - Status filter (default: Active Only): All Status, Active Only, Completed
+  - Priority filter: All Priorities, Alpha, Bravo, Charlie, Delta, Echo
+  - Completed directives auto-hide unless filter is "All Status" or "Completed"
+- **Sorting options**:
+  - Sort by Priority (default): Alpha → Bravo → Charlie → Delta → Echo
+  - Due Date (Earliest): Earliest due dates first
+  - Due Date (Latest): Latest due dates first
+  - Sort by Title: Alphabetical order
 - Framer Motion animations
 
 ### Op Notices
