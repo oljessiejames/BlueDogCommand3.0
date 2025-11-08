@@ -4,10 +4,11 @@ A tactical military-themed command center application for managing operational d
 
 ## Project Overview
 
-Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features three main sections:
+Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features four main sections:
 - **Situation Room**: Dashboard with KPI metrics, operational status, and AI-powered tactical assistant
 - **Directives**: Task management with priority levels and completion tracking
 - **Op Notices**: Scheduled reminders with repeat options
+- **Calendar**: Unified timeline view of directives and notices with Excel import capability
 
 ## Tech Stack
 
@@ -26,6 +27,8 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - SQLite via better-sqlite3 (data persistence)
 - Zod (validation)
 - OpenAI API (GPT-3.5-turbo for tactical AI assistant)
+- multer (file upload handling)
+- xlsx (Excel file parsing)
 
 ## Project Structure
 
@@ -37,11 +40,14 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
       KpiCard.tsx     - Dashboard metric cards
       DirectiveForm.tsx - Form for creating/editing tasks
       NoticeForm.tsx  - Form for creating/editing reminders
+      CalendarView.tsx - Reusable calendar view with time ranges
+      CalendarCard.tsx - Dashboard calendar preview card
       Empty.tsx       - Empty state component
     /pages
       SituationRoom.tsx - Dashboard page
       Directives.tsx  - Task management page
       OpNotices.tsx   - Reminders page
+      Calendar.tsx    - Calendar page with Excel import
     /lib
       time.ts         - Date/time utilities
       queryClient.ts  - TanStack Query setup
@@ -95,6 +101,15 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - `GET /api/status` - Dashboard metrics
 - `GET /api/health` - Health check
 
+### Calendar
+- `GET /api/calendar/events?from=<ISO>&to=<ISO>` - Get calendar events from directives and notices
+  - Returns array of CalendarEvent objects combining directives (with dueAt) and notices (with at)
+  - Response: `[{ id, title, notes, priority, at, type: "directive"|"notice" }]`
+- `POST /api/calendar/import` - Import events from Excel file
+  - Accepts multipart/form-data with Excel file
+  - Expected columns: type, title, notes, priority, at, dueAt, repeat
+  - Response: `{ directives: number, notices: number, errors: string[] }`
+
 ### Chat
 - `POST /api/chat` - Stream AI responses from tactical assistant
   - Request body: `{ messages: [{ role: "user" | "assistant" | "system", content: string }] }`
@@ -128,6 +143,18 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
   repeat: "none" | "daily" | "weekly" | "monthly";
   createdAt: string;
   updatedAt: string;
+}
+```
+
+### CalendarEvent
+```typescript
+{
+  id: string;
+  title: string;
+  notes: string | null;
+  priority: "Alpha" | "Bravo" | "Charlie" | "Delta" | "Echo";
+  at: string;  // ISO datetime (from dueAt for directives, at for notices)
+  type: "directive" | "notice";
 }
 ```
 
@@ -183,6 +210,20 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Timeline view sorted by scheduled time
 - Upcoming/past indicators
 - Priority badges with hover tooltips showing descriptions
+
+### Calendar
+- **Unified Timeline View**: Combines directives (with due dates) and notices into single calendar view
+- **Time Range Selector**: Switch between 1, 3, 7, 14, or 30 day views (default: 7 days)
+- **Event Grouping**: Events grouped by date with chronological sorting
+- **Priority Display**: Color-coded priority badges for all events
+- **Event Types**: Visual distinction between directives and notices
+- **Excel Import**: 
+  - Bulk import events from Excel spreadsheets
+  - Expected columns: type, title, notes, priority, at, dueAt, repeat
+  - Validation and error reporting for each row
+  - Success summary with counts of imported directives and notices
+- **Dashboard Integration**: Calendar card on Situation Room showing next 5 upcoming events
+- **Quick Navigation**: Click calendar card to jump to full calendar view
 
 ### UI Features
 - Dark mode only (tactical theme)
