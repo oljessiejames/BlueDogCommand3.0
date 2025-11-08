@@ -1,0 +1,75 @@
+We’re updating the Blue Dog Command app’s header greetings and time display.
+
+Make the following changes exactly:
+
+1️⃣ Create or update a file at `src/lib/time.ts` with these functions:
+-------------------------------------------------------
+export function getGreeting(): string {
+  const now = new Date();
+  const hour = now.getHours();
+
+  if (hour >= 1 && hour < 11) {
+    return "Zero Dark-Thirty, let’s go Commander.";
+  } else if (hour >= 11 && hour < 17) {
+    return "Halfway to exfil, keep moving.";
+  } else {
+    return "Nightwatch ready, Commander.";
+  }
+}
+
+export function getFormattedTime(): string {
+  return new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+-------------------------------------------------------
+
+2️⃣ Update or create a `src/components/Header.tsx` file.
+This header should:
+- Display the greeting on the left
+- Show the current system time (in 24-hour format) on the right
+- Auto-refresh every minute
+- Use the dark Blue Dog theme colors
+
+Here’s the structure:
+-------------------------------------------------------
+import { getGreeting, getFormattedTime } from "@/lib/time";
+import { useEffect, useState } from "react";
+
+export default function Header() {
+  const [time, setTime] = useState(getFormattedTime());
+  const [greeting, setGreeting] = useState(getGreeting());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(getFormattedTime());
+      setGreeting(getGreeting());
+    }, 60000); // update every minute
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <header className="flex justify-between items-center bg-[#111827] text-white px-6 py-4 shadow-md border-b border-gray-700">
+      <h1 className="text-xl font-rajdhani tracking-wider">{greeting}</h1>
+      <div className="text-sm text-gray-400">{time}</div>
+    </header>
+  );
+}
+-------------------------------------------------------
+
+3️⃣ Import this `Header` component into the main app shell (usually `src/components/Shell.tsx` or `src/App.tsx`) so it appears on all pages.
+
+4️⃣ Confirm that:
+- The greeting dynamically updates according to the system clock.
+- Time displays in 24-hour format (HH:mm).
+- Theme colors match the rest of Blue Dog Command (gunmetal background, white text, blue highlights).
+
+Time-based greetings schedule:
+- 01:00–10:59 → “Zero Dark-Thirty, let’s go Commander.”
+- 11:00–16:59 → “Halfway to exfil, keep moving.”
+- 17:00–00:59 → “Nightwatch ready, Commander.”
+-------------------------------------------------------
+
+After this, run `npm run dev` and confirm the header updates automatically.

@@ -105,7 +105,7 @@ export function Shell({ children, onCreateDirective, onCreateNotice, isCreatingD
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center justify-between gap-4 border-b px-6 py-4 bg-card">
             <div className="flex items-center gap-4">
-              <SidebarTrigger data-testid="button-sidebar-toggle" className="lg:hidden" />
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
               <div>
                 <h2 className="text-2xl font-bold font-heading" data-testid="text-page-title">
                   {currentRoute.title}
