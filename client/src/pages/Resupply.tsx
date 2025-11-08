@@ -33,23 +33,25 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Empty } from "@/components/Empty";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { ResupplyItem, Store, InsertResupplyItem, InsertStore } from "@shared/schema";
+import type { ResupplyItem, Store, Category, InsertResupplyItem, InsertStore, InsertCategory } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Resupply() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showNewStoreDialog, setShowNewStoreDialog] = useState(false);
+  const [showNewCategoryDialog, setShowNewCategoryDialog] = useState(false);
   const [storeFilter, setStoreFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [newStoreName, setNewStoreName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
     item: "",
     quantity: "",
-    category: "",
+    categoryId: "",
     storeId: "",
   });
 
@@ -57,16 +59,18 @@ export default function Resupply() {
     queryKey: ['/api/stores'],
   });
 
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
+    queryKey: ['/api/categories'],
+  });
+
   const queryParams = new URLSearchParams();
   if (storeFilter !== "all") queryParams.set("storeId", storeFilter);
-  if (categoryFilter !== "all") queryParams.set("category", categoryFilter);
+  if (categoryFilter !== "all") queryParams.set("categoryId", categoryFilter);
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<ResupplyItem[]>({
     queryKey: ['/api/resupply', storeFilter, categoryFilter],
     queryFn: () => fetch(`/api/resupply?${queryParams}`).then(r => r.json()),
   });
-
-  const categories = Array.from(new Set(items.map(item => item.category).filter(Boolean)));
 
   const createItemMutation = useMutation({
     mutationFn: async (data: InsertResupplyItem) =>
@@ -74,7 +78,7 @@ export default function Resupply() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/resupply'] });
       setShowAddDialog(false);
-      setFormData({ item: "", quantity: "", category: "", storeId: "" });
+      setFormData({ item: "", quantity: "", categoryId: "", storeId: "" });
       toast({
         title: "Item added",
         description: "Resupply item added to the list",
@@ -95,6 +99,23 @@ export default function Resupply() {
       toast({
         title: "Store added",
         description: `${newStore.name} has been added to your stores`,
+      });
+    },
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: InsertCategory) => {
+      const res = await apiRequest("POST", "/api/categories", data);
+      return res.json() as Promise<Category>;
+    },
+    onSuccess: (newCategory: Category) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
+      setShowNewCategoryDialog(false);
+      setNewCategoryName("");
+      setFormData({ ...formData, categoryId: newCategory.id });
+      toast({
+        title: "Category added",
+        description: `${newCategory.name} has been added to your categories`,
       });
     },
   });
@@ -124,7 +145,7 @@ export default function Resupply() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.item || !formData.quantity || !formData.category || !formData.storeId) {
+    if (!formData.item || !formData.quantity || !formData.categoryId || !formData.storeId) {
       toast({
         variant: "destructive",
         title: "Missing fields",
@@ -148,7 +169,20 @@ export default function Resupply() {
     createStoreMutation.mutate({ name: newStoreName.trim() });
   };
 
-  const isLoading = itemsLoading || storesLoading;
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing category name",
+        description: "Please enter a category name",
+      });
+      return;
+    }
+    createCategoryMutation.mutate({ name: newCategoryName.trim() });
+  };
+
+  const isLoading = itemsLoading || storesLoading || categoriesLoading;
 
   if (isLoading) {
     return (
@@ -202,8 +236,8 @@ export default function Resupply() {
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {categories.map((category) => (
-              <SelectItem key={category} value={category}>
-                {category}
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -221,6 +255,7 @@ export default function Resupply() {
           <div className="space-y-3">
             {items.map((item) => {
               const store = stores.find(s => s.id === item.storeId);
+              const category = categories.find(c => c.id === item.categoryId);
               return (
                 <motion.div
                   key={item.id}
@@ -247,10 +282,12 @@ export default function Resupply() {
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1" data-testid={`text-category-${item.id}`}>
-                            <Package className="h-3 w-3" />
-                            {item.category}
-                          </span>
+                          {category && (
+                            <span className="flex items-center gap-1" data-testid={`text-category-${item.id}`}>
+                              <Package className="h-3 w-3" />
+                              {category.name}
+                            </span>
+                          )}
                           {store && (
                             <span className="flex items-center gap-1" data-testid={`text-store-${item.id}`}>
                               <StoreIcon className="h-3 w-3" />
@@ -307,13 +344,31 @@ export default function Resupply() {
             </div>
             <div>
               <Label htmlFor="category">Category</Label>
-              <Input
-                id="category"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                placeholder="e.g., Food Supplies"
-                data-testid="input-category"
-              />
+              <div className="flex gap-2">
+                <Select
+                  value={formData.categoryId}
+                  onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                >
+                  <SelectTrigger className="flex-1" data-testid="select-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowNewCategoryDialog(true)}
+                  data-testid="button-add-category"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div>
               <Label htmlFor="store">Store</Label>
@@ -398,6 +453,46 @@ export default function Resupply() {
                 data-testid="button-submit-store"
               >
                 {createStoreMutation.isPending ? "Adding..." : "Add Store"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showNewCategoryDialog} onOpenChange={setShowNewCategoryDialog}>
+        <DialogContent data-testid="dialog-add-category">
+          <DialogHeader>
+            <DialogTitle>Add Category</DialogTitle>
+            <DialogDescription>
+              Add a new category to your list
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddCategory} className="space-y-4">
+            <div>
+              <Label htmlFor="categoryName">Category Name</Label>
+              <Input
+                id="categoryName"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="e.g., Food Supplies"
+                data-testid="input-category-name"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowNewCategoryDialog(false)}
+                data-testid="button-cancel-category"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={createCategoryMutation.isPending}
+                data-testid="button-submit-category"
+              >
+                {createCategoryMutation.isPending ? "Adding..." : "Add Category"}
               </Button>
             </div>
           </form>
