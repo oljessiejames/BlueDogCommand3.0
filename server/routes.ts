@@ -1,15 +1,153 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { insertDirectiveSchema, insertNoticeSchema } from "@shared/schema";
+import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ ok: true });
+  });
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Status endpoint
+  app.get("/api/status", async (req, res) => {
+    try {
+      const status = await storage.getStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Error getting status:", error);
+      res.status(500).json({ error: "Failed to get status" });
+    }
+  });
+
+  // Directives endpoints
+  app.get("/api/directives", async (req, res) => {
+    try {
+      const { status, priority } = req.query;
+      const directives = await storage.getDirectives({
+        status: status as string,
+        priority: priority as string,
+      });
+      res.json(directives);
+    } catch (error) {
+      console.error("Error getting directives:", error);
+      res.status(500).json({ error: "Failed to get directives" });
+    }
+  });
+
+  app.post("/api/directives", async (req, res) => {
+    try {
+      const data = insertDirectiveSchema.parse(req.body);
+      const directive = await storage.createDirective(data);
+      res.status(201).json(directive);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid request data", details: error.errors });
+      } else {
+        console.error("Error creating directive:", error);
+        res.status(500).json({ error: "Failed to create directive" });
+      }
+    }
+  });
+
+  app.patch("/api/directives/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      // Validate that at least some fields are provided
+      if (Object.keys(updates).length === 0) {
+        res.status(400).json({ error: "No updates provided" });
+        return;
+      }
+
+      const directive = await storage.updateDirective(id, updates);
+      res.json(directive);
+    } catch (error) {
+      if ((error as Error).message === "Directive not found") {
+        res.status(404).json({ error: "Directive not found" });
+      } else {
+        console.error("Error updating directive:", error);
+        res.status(500).json({ error: "Failed to update directive" });
+      }
+    }
+  });
+
+  app.delete("/api/directives/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteDirective(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting directive:", error);
+      res.status(500).json({ error: "Failed to delete directive" });
+    }
+  });
+
+  // Notices endpoints
+  app.get("/api/notices", async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const notices = await storage.getNotices({
+        from: from as string,
+        to: to as string,
+      });
+      res.json(notices);
+    } catch (error) {
+      console.error("Error getting notices:", error);
+      res.status(500).json({ error: "Failed to get notices" });
+    }
+  });
+
+  app.post("/api/notices", async (req, res) => {
+    try {
+      const data = insertNoticeSchema.parse(req.body);
+      const notice = await storage.createNotice(data);
+      res.status(201).json(notice);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid request data", details: error.errors });
+      } else {
+        console.error("Error creating notice:", error);
+        res.status(500).json({ error: "Failed to create notice" });
+      }
+    }
+  });
+
+  app.patch("/api/notices/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      if (Object.keys(updates).length === 0) {
+        res.status(400).json({ error: "No updates provided" });
+        return;
+      }
+
+      const notice = await storage.updateNotice(id, updates);
+      res.json(notice);
+    } catch (error) {
+      if ((error as Error).message === "Notice not found") {
+        res.status(404).json({ error: "Notice not found" });
+      } else {
+        console.error("Error updating notice:", error);
+        res.status(500).json({ error: "Failed to update notice" });
+      }
+    }
+  });
+
+  app.delete("/api/notices/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteNotice(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting notice:", error);
+      res.status(500).json({ error: "Failed to delete notice" });
+    }
+  });
 
   const httpServer = createServer(app);
-
   return httpServer;
 }
