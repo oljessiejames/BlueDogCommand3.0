@@ -12,37 +12,143 @@ export const db = new Database(dbPath);
 // Enable foreign keys
 db.pragma("foreign_keys = ON");
 
-// Create tables
+// Create tables and run migrations
 export function initializeDatabase() {
-  // Directives table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS directives (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      notes TEXT,
-      priority TEXT NOT NULL CHECK(priority IN ('low', 'med', 'high')),
-      due_at TEXT,
-      completed INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  // Op Notices table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS notices (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      notes TEXT,
-      at TEXT NOT NULL,
-      repeat TEXT NOT NULL CHECK(repeat IN ('none', 'daily', 'weekly', 'monthly')),
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
+  // Run migration for directives table (old priority system to new)
+  migrateDirectivesTable();
+  
+  // Run migration for notices table (add priority field)
+  migrateNoticesTable();
 
   // Seed data
   seedData();
+}
+
+function migrateDirectivesTable() {
+  // Check if directives table exists and if it has the old schema
+  const tableInfo = db.prepare(`
+    SELECT sql FROM sqlite_master WHERE type='table' AND name='directives'
+  `).get() as { sql?: string } | undefined;
+
+  const needsMigration = tableInfo?.sql?.includes("'low', 'med', 'high'");
+
+  if (needsMigration) {
+    console.log("🔄 Migrating directives table to new priority system...");
+    
+    db.exec(`
+      BEGIN TRANSACTION;
+      
+      -- Create new table with updated schema
+      CREATE TABLE directives_new (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT,
+        priority TEXT NOT NULL CHECK(priority IN ('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo')),
+        due_at TEXT,
+        completed INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      
+      -- Migrate data with priority mapping: high→Alpha, med→Bravo, low→Charlie
+      INSERT INTO directives_new (id, title, notes, priority, due_at, completed, created_at, updated_at)
+      SELECT 
+        id, 
+        title, 
+        notes,
+        CASE priority
+          WHEN 'high' THEN 'Alpha'
+          WHEN 'med' THEN 'Bravo'
+          WHEN 'low' THEN 'Charlie'
+          ELSE priority
+        END as priority,
+        due_at,
+        completed,
+        created_at,
+        updated_at
+      FROM directives;
+      
+      -- Drop old table and rename new one
+      DROP TABLE directives;
+      ALTER TABLE directives_new RENAME TO directives;
+      
+      COMMIT;
+    `);
+    
+    console.log("✅ Directives table migrated successfully");
+  } else if (!tableInfo) {
+    // Table doesn't exist, create it with new schema
+    db.exec(`
+      CREATE TABLE directives (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT,
+        priority TEXT NOT NULL CHECK(priority IN ('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo')),
+        due_at TEXT,
+        completed INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+  }
+}
+
+function migrateNoticesTable() {
+  // Check if notices table exists
+  const tableInfo = db.prepare(`
+    SELECT sql FROM sqlite_master WHERE type='table' AND name='notices'
+  `).get() as { sql?: string } | undefined;
+
+  // Check if priority column exists
+  const columns = db.prepare(`PRAGMA table_info(notices)`).all() as Array<{ name: string }>;
+  const hasPriorityColumn = columns.some(col => col.name === 'priority');
+
+  if (tableInfo && !hasPriorityColumn) {
+    console.log("🔄 Migrating notices table to add priority field...");
+    
+    db.exec(`
+      BEGIN TRANSACTION;
+      
+      -- Create new table with priority field
+      CREATE TABLE notices_new (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT,
+        priority TEXT NOT NULL CHECK(priority IN ('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo')) DEFAULT 'Charlie',
+        at TEXT NOT NULL,
+        repeat TEXT NOT NULL CHECK(repeat IN ('none', 'daily', 'weekly', 'monthly')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      
+      -- Migrate existing data with default priority 'Charlie'
+      INSERT INTO notices_new (id, title, notes, priority, at, repeat, created_at, updated_at)
+      SELECT id, title, notes, 'Charlie', at, repeat, created_at, updated_at
+      FROM notices;
+      
+      -- Drop old table and rename new one
+      DROP TABLE notices;
+      ALTER TABLE notices_new RENAME TO notices;
+      
+      COMMIT;
+    `);
+    
+    console.log("✅ Notices table migrated successfully");
+  } else if (!tableInfo) {
+    // Table doesn't exist, create it with new schema
+    db.exec(`
+      CREATE TABLE notices (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT,
+        priority TEXT NOT NULL CHECK(priority IN ('Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo')) DEFAULT 'Charlie',
+        at TEXT NOT NULL,
+        repeat TEXT NOT NULL CHECK(repeat IN ('none', 'daily', 'weekly', 'monthly')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+  }
 }
 
 function seedData() {
@@ -63,7 +169,7 @@ function seedData() {
       randomUUID(),
       "Secure perimeter checkpoints",
       "Verify all entry points are operational and guards are positioned correctly",
-      "high",
+      "Alpha",
       tomorrow,
       0,
       now,
@@ -74,7 +180,7 @@ function seedData() {
       randomUUID(),
       "Update tactical briefing materials",
       "Prepare presentation slides and situation reports for tomorrow's briefing",
-      "med",
+      "Bravo",
       new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
       0,
       now,
@@ -85,7 +191,7 @@ function seedData() {
       randomUUID(),
       "Inventory equipment supplies",
       "Complete quarterly audit of all equipment and supply levels",
-      "low",
+      "Charlie",
       nextWeek,
       0,
       now,
@@ -94,8 +200,8 @@ function seedData() {
 
     // Seed 2 notices
     const insertNotice = db.prepare(`
-      INSERT INTO notices (id, title, notes, at, repeat, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO notices (id, title, notes, priority, at, repeat, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const twoHoursLater = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
@@ -107,6 +213,7 @@ function seedData() {
       randomUUID(),
       "Command briefing session",
       "Daily operations review with department heads",
+      "Bravo",
       twoHoursLater,
       "none",
       now,
@@ -117,6 +224,7 @@ function seedData() {
       randomUUID(),
       "Morning status report",
       "Submit operational readiness report to command",
+      "Charlie",
       tomorrowMorning.toISOString(),
       "daily",
       now,

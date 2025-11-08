@@ -4,7 +4,8 @@ import { Activity, Bell, ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { PriorityBadge } from "@/components/PriorityBadge";
+import { sortByPriority } from "@/lib/priority";
 import { formatDateTime, formatRelativeTime } from "@/lib/time";
 import type { Status, Directive, Notice } from "@shared/schema";
 
@@ -56,12 +57,8 @@ export default function SituationRoom() {
     );
   }
 
-  // Sort directives by priority (high > med > low) and get top 5
-  // Copy array to avoid mutating cached data
-  const priorityOrder = { high: 3, med: 2, low: 1 };
-  const topDirectives = [...activeDirectives]
-    .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
-    .slice(0, 5);
+  // Sort directives by priority (Alpha > Bravo > Charlie > Delta > Echo) and get top 5
+  const topDirectives = sortByPriority(activeDirectives).slice(0, 5);
 
   // Get next 5 upcoming notices (sorted by datetime)
   const now = new Date();
@@ -74,15 +71,6 @@ export default function SituationRoom() {
   const completionRate = status?.directives.total
     ? Math.round((status.directives.completed / status.directives.total) * 100)
     : 0;
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'bg-destructive/10 text-destructive border-destructive/20';
-      case 'med': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-      case 'low': return 'bg-primary/10 text-primary border-primary/20';
-      default: return 'bg-muted';
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -125,12 +113,7 @@ export default function SituationRoom() {
                       className="flex items-center gap-3 p-2 rounded-md hover-elevate"
                       data-testid={`directive-preview-${directive.id}`}
                     >
-                      <Badge 
-                        variant="outline" 
-                        className={`${getPriorityColor(directive.priority)} text-xs font-mono uppercase shrink-0`}
-                      >
-                        {directive.priority}
-                      </Badge>
+                      <PriorityBadge priority={directive.priority} showTooltip={false} className="shrink-0" />
                       <span className="text-sm flex-1 truncate">{directive.title}</span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                     </div>

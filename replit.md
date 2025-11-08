@@ -65,9 +65,11 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - **Gunmetal**: #2B2B2B (main background)
 - **Slate**: #1F2937 / #111827 (cards/panels)
 - **Gray**: #828282 (muted text)
-- **Amber**: #FBAE17 (warnings/medium priority)
-- **Success Green**: #16A34A (completed states)
-- **Critical Red**: #DC2626 (high priority/destructive actions)
+- **Priority Alpha (Critical)**: #DC2626 (highest priority/mission-critical)
+- **Priority Bravo (High)**: #F97316 (high importance, 24-48hr completion)
+- **Priority Charlie (Medium)**: #EAB308 (routine but necessary)
+- **Priority Delta (Low)**: #16A34A (low urgency, can be postponed)
+- **Priority Echo (Completed)**: #6B7280 (completed/archived tasks)
 
 ### Typography
 - Headings: Rajdhani or Orbitron
@@ -77,7 +79,7 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 ## API Endpoints
 
 ### Directives (Tasks)
-- `GET /api/directives?status=all|active|completed&priority=low|med|high`
+- `GET /api/directives?status=all|active|completed&priority=Alpha|Bravo|Charlie|Delta|Echo`
 - `POST /api/directives` - Create new directive
 - `PATCH /api/directives/:id` - Update directive
 - `DELETE /api/directives/:id` - Delete directive
@@ -100,7 +102,7 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
   id: string;
   title: string;
   notes: string | null;
-  priority: "low" | "med" | "high";
+  priority: "Alpha" | "Bravo" | "Charlie" | "Delta" | "Echo";
   dueAt: string | null;  // ISO datetime
   completed: boolean;
   createdAt: string;
@@ -114,6 +116,7 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
   id: string;
   title: string;
   notes: string | null;
+  priority: "Alpha" | "Bravo" | "Charlie" | "Delta" | "Echo";
   at: string;  // ISO datetime
   repeat: "none" | "daily" | "weekly" | "monthly";
   createdAt: string;
@@ -132,18 +135,26 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 
 ### Directives
 - Create/edit/delete tasks
-- Priority levels (low/med/high) with color coding
+- Tactical priority levels with color-coded badges and tooltips:
+  - **Priority Alpha (Critical)** ⚠️ - Mission-critical, immediate action required
+  - **Priority Bravo (High)** 🔶 - High importance, 24-48hr completion needed
+  - **Priority Charlie (Medium)** ⚙️ - Routine but necessary, after higher priorities
+  - **Priority Delta (Low)** 🟢 - Low urgency, can be scheduled/postponed
+  - **Priority Echo (Completed)** ✅ - Automatically set when task is marked complete
 - Due date tracking with overdue indicators
+- Auto-change to Priority Echo when marked complete
 - Completion checkbox
 - Filter by status and priority
 - Framer Motion animations
 
 ### Op Notices
 - Create/edit/delete reminders
+- Tactical priority levels (same as Directives) with color coding
 - Datetime scheduling
 - Repeat options (none/daily/weekly/monthly)
 - Timeline view sorted by scheduled time
 - Upcoming/past indicators
+- Priority badges with hover tooltips showing descriptions
 
 ### UI Features
 - Dark mode only (tactical theme)

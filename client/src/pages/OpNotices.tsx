@@ -5,6 +5,7 @@ import { Bell, Pencil, Trash2, Clock, Repeat } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PriorityBadge } from "@/components/PriorityBadge";
 import {
   Dialog,
   DialogContent,
@@ -129,6 +130,7 @@ export default function OpNotices() {
                             </h3>
                           </div>
                           <div className="flex items-center gap-2">
+                            <PriorityBadge priority={notice.priority} />
                             {notice.repeat !== "none" && (
                               <Badge
                                 variant="outline"

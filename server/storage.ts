@@ -126,12 +126,13 @@ export class SqliteStorage implements IStorage {
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO notices (id, title, notes, at, repeat, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO notices (id, title, notes, priority, at, repeat, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       notice.title,
       notice.notes || null,
+      notice.priority,
       notice.at,
       notice.repeat,
       now,
@@ -150,14 +151,15 @@ export class SqliteStorage implements IStorage {
     const now = new Date().toISOString();
     const title = updates.title ?? current.title;
     const notes = updates.notes !== undefined ? (updates.notes || null) : current.notes;
+    const priority = updates.priority ?? current.priority;
     const at = updates.at ?? current.at;
     const repeat = updates.repeat ?? current.repeat;
 
     db.prepare(`
       UPDATE notices
-      SET title = ?, notes = ?, at = ?, repeat = ?, updated_at = ?
+      SET title = ?, notes = ?, priority = ?, at = ?, repeat = ?, updated_at = ?
       WHERE id = ?
-    `).run(title, notes, at, repeat, now, id);
+    `).run(title, notes, priority, at, repeat, now, id);
 
     return (await this.getNotice(id))!;
   }
@@ -194,7 +196,7 @@ export class SqliteStorage implements IStorage {
       id: row.id,
       title: row.title,
       notes: row.notes,
-      priority: row.priority as "low" | "med" | "high",
+      priority: row.priority,
       dueAt: row.due_at,
       completed: row.completed === 1,
       createdAt: row.created_at,
@@ -207,6 +209,7 @@ export class SqliteStorage implements IStorage {
       id: row.id,
       title: row.title,
       notes: row.notes,
+      priority: row.priority,
       at: row.at,
       repeat: row.repeat as "none" | "daily" | "weekly" | "monthly",
       createdAt: row.created_at,

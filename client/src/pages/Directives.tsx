@@ -4,8 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Pencil, Trash2, ListChecks, Circle, CheckCircle2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PriorityBadge } from "@/components/PriorityBadge";
+import { priorityLevels } from "@shared/schema";
+import type { PriorityLevel } from "@/lib/priority";
 import {
   Select,
   SelectContent,
@@ -39,7 +41,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Directives() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed">("all");
-  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "med" | "high">("all");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | PriorityLevel>("all");
   const [editingDirective, setEditingDirective] = useState<Directive | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -72,36 +74,19 @@ export default function Directives() {
   });
 
   const handleToggleComplete = (directive: Directive) => {
+    const updates: Partial<InsertDirective> & { completed?: boolean } = {
+      completed: !directive.completed
+    };
+    
+    // When marking as complete, auto-change priority to Echo
+    if (!directive.completed) {
+      updates.priority = "Echo";
+    }
+    
     updateMutation.mutate({
       id: directive.id,
-      updates: { completed: !directive.completed },
+      updates,
     });
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "bg-destructive/10 text-destructive border-destructive/20";
-      case "med":
-        return "bg-chart-2/10 text-chart-2 border-chart-2/20";
-      case "low":
-        return "bg-muted text-muted-foreground border-border";
-      default:
-        return "bg-muted text-muted-foreground border-border";
-    }
-  };
-
-  const getPriorityLabel = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "HIGH";
-      case "med":
-        return "MEDIUM";
-      case "low":
-        return "LOW";
-      default:
-        return priority.toUpperCase();
-    }
   };
 
   if (isLoading) {
@@ -142,9 +127,11 @@ export default function Directives() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" data-testid="option-priority-all">All Priorities</SelectItem>
-            <SelectItem value="low" data-testid="option-priority-filter-low">Low Priority</SelectItem>
-            <SelectItem value="med" data-testid="option-priority-filter-med">Med Priority</SelectItem>
-            <SelectItem value="high" data-testid="option-priority-filter-high">High Priority</SelectItem>
+            {priorityLevels.map((level) => (
+              <SelectItem key={level} value={level} data-testid={`option-priority-filter-${level.toLowerCase()}`}>
+                {level}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -187,13 +174,7 @@ export default function Directives() {
                           </h3>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={`${getPriorityColor(directive.priority)} font-mono text-xs`}
-                            data-testid={`badge-priority-${directive.id}`}
-                          >
-                            {getPriorityLabel(directive.priority)}
-                          </Badge>
+                          <PriorityBadge priority={directive.priority} />
                         </div>
                       </div>
 

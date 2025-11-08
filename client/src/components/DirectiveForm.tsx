@@ -9,6 +9,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getActivePriorities } from "@/lib/priority";
 
 interface DirectiveFormProps {
   directive?: Directive;
@@ -28,12 +30,14 @@ interface DirectiveFormProps {
 }
 
 export function DirectiveForm({ directive, onSubmit, onCancel, isPending }: DirectiveFormProps) {
+  const activePriorities = getActivePriorities();
+
   const form = useForm<InsertDirective>({
     resolver: zodResolver(insertDirectiveSchema),
     defaultValues: {
       title: directive?.title || "",
       notes: directive?.notes || "",
-      priority: directive?.priority || "med",
+      priority: directive?.priority || "Charlie",
       dueAt: directive?.dueAt || "",
     },
   });
@@ -64,19 +68,34 @@ export function DirectiveForm({ directive, onSubmit, onCancel, isPending }: Dire
           name="priority"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Priority</FormLabel>
+              <FormLabel>Priority Level</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger data-testid="select-directive-priority">
-                    <SelectValue placeholder="Select priority" />
+                    <SelectValue placeholder="Select priority level" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="low" data-testid="option-priority-low">Low Priority</SelectItem>
-                  <SelectItem value="med" data-testid="option-priority-med">Medium Priority</SelectItem>
-                  <SelectItem value="high" data-testid="option-priority-high">High Priority</SelectItem>
+                  {activePriorities.map((p) => {
+                    const PriorityIcon = p.Icon;
+                    return (
+                      <SelectItem 
+                        key={p.name} 
+                        value={p.name}
+                        data-testid={`option-priority-${p.name.toLowerCase()}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <PriorityIcon className="h-3 w-3" />
+                          <span>{p.label}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              <FormDescription className="text-xs">
+                {field.value && activePriorities.find(p => p.name === field.value)?.description}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

@@ -9,6 +9,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getActivePriorities } from "@/lib/priority";
 
 interface NoticeFormProps {
   notice?: Notice;
@@ -28,11 +30,14 @@ interface NoticeFormProps {
 }
 
 export function NoticeForm({ notice, onSubmit, onCancel, isPending }: NoticeFormProps) {
+  const activePriorities = getActivePriorities();
+
   const form = useForm<InsertNotice>({
     resolver: zodResolver(insertNoticeSchema),
     defaultValues: {
       title: notice?.title || "",
       notes: notice?.notes || "",
+      priority: notice?.priority || "Charlie",
       at: notice?.at || "",
       repeat: notice?.repeat || "none",
     },
@@ -54,6 +59,44 @@ export function NoticeForm({ notice, onSubmit, onCancel, isPending }: NoticeForm
                   data-testid="input-notice-title"
                 />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="priority"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Priority Level</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-notice-priority">
+                    <SelectValue placeholder="Select priority level" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {activePriorities.map((p) => {
+                    const PriorityIcon = p.Icon;
+                    return (
+                      <SelectItem 
+                        key={p.name} 
+                        value={p.name}
+                        data-testid={`option-priority-${p.name.toLowerCase()}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <PriorityIcon className="h-3 w-3" />
+                          <span>{p.label}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <FormDescription className="text-xs">
+                {field.value && activePriorities.find(p => p.name === field.value)?.description}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
