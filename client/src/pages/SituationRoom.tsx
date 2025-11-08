@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity, CheckCircle2, Clock, ListChecks, ChevronRight } from "lucide-react";
+import { Activity, Bell, ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
-import { KpiCard } from "@/components/KpiCard";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import type { Status, Directive } from "@shared/schema";
+import { formatDateTime, formatRelativeTime } from "@/lib/time";
+import type { Status, Directive, Notice } from "@shared/schema";
 
 export default function SituationRoom() {
   const [, setLocation] = useLocation();
@@ -24,17 +24,31 @@ export default function SituationRoom() {
     },
   });
 
-  const isLoading = statusLoading || directivesLoading;
+  const { data: notices = [], isLoading: noticesLoading } = useQuery<Notice[]>({
+    queryKey: ['/api/notices'],
+    queryFn: async () => {
+      const response = await fetch('/api/notices');
+      if (!response.ok) throw new Error('Failed to fetch notices');
+      return response.json();
+    },
+  });
+
+  const isLoading = statusLoading || directivesLoading || noticesLoading;
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid gap-4 md:grid-cols-2">
+          {[...Array(2)].map((_, i) => (
             <Card key={i} className="p-6">
               <Skeleton className="h-4 w-24 mb-2" />
               <Skeleton className="h-8 w-16 mb-1" />
               <Skeleton className="h-3 w-32" />
+              <div className="space-y-2 pt-4 border-t mt-4">
+                {[...Array(3)].map((_, j) => (
+                  <Skeleton key={j} className="h-10 w-full" />
+                ))}
+              </div>
             </Card>
           ))}
         </div>
@@ -42,16 +56,24 @@ export default function SituationRoom() {
     );
   }
 
-  const completionRate = status?.directives.total
-    ? Math.round((status.directives.completed / status.directives.total) * 100)
-    : 0;
-
   // Sort directives by priority (high > med > low) and get top 5
   // Copy array to avoid mutating cached data
   const priorityOrder = { high: 3, med: 2, low: 1 };
   const topDirectives = [...activeDirectives]
     .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
     .slice(0, 5);
+
+  // Get next 5 upcoming notices (sorted by datetime)
+  const now = new Date();
+  const upcomingNotices = [...notices]
+    .filter(notice => new Date(notice.at) >= now)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+    .slice(0, 5);
+
+  // Calculate completion rate for Command Status section
+  const completionRate = status?.directives.total
+    ? Math.round((status.directives.completed / status.directives.total) * 100)
+    : 0;
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -69,12 +91,11 @@ export default function SituationRoom() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0 }}
-            className="md:col-span-2"
           >
             <Card 
               className="p-6 hover-elevate cursor-pointer" 
@@ -98,7 +119,7 @@ export default function SituationRoom() {
               
               {topDirectives.length > 0 ? (
                 <div className="space-y-2 border-t pt-4">
-                  {topDirectives.map((directive, index) => (
+                  {topDirectives.map((directive) => (
                     <div 
                       key={directive.id} 
                       className="flex items-center gap-3 p-2 rounded-md hover-elevate"
@@ -122,27 +143,57 @@ export default function SituationRoom() {
               )}
             </Card>
           </motion.div>
-          <KpiCard
-            title="Completed"
-            value={status?.directives.completed || 0}
-            icon={CheckCircle2}
-            subtitle={`${completionRate}% completion rate`}
-            delay={0.1}
-          />
-          <KpiCard
-            title="Total Directives"
-            value={status?.directives.total || 0}
-            icon={ListChecks}
-            subtitle="All time missions"
-            delay={0.2}
-          />
-          <KpiCard
-            title="Upcoming Notices"
-            value={status?.notices.upcomingCount || 0}
-            icon={Clock}
-            subtitle="Scheduled operations"
-            delay={0.3}
-          />
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
+            <Card 
+              className="p-6 hover-elevate cursor-pointer" 
+              data-testid="card-kpi-op-notices"
+              onClick={() => setLocation('/notices')}
+            >
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Op Notices</p>
+                  <p className="text-3xl font-bold font-heading" data-testid="text-kpi-value-op-notices">
+                    {upcomingNotices.length}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Next {upcomingNotices.length} upcoming
+                  </p>
+                </div>
+                <div className="rounded-md bg-primary/10 p-3">
+                  <Bell className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+              
+              {upcomingNotices.length > 0 ? (
+                <div className="space-y-2 border-t pt-4">
+                  {upcomingNotices.map((notice) => (
+                    <div 
+                      key={notice.id} 
+                      className="flex items-start gap-3 p-2 rounded-md hover-elevate"
+                      data-testid={`notice-preview-${notice.id}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate font-medium">{notice.title}</p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {formatRelativeTime(notice.at)}
+                        </p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-4 border-t">
+                  No upcoming notices
+                </div>
+              )}
+            </Card>
+          </motion.div>
         </div>
       </motion.div>
 
