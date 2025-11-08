@@ -142,10 +142,16 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - **Tactical AI Assistant** (OpenAI GPT-3.5-turbo)
   - Real-time streaming chat interface
   - Military-themed AI responses
+  - **AI-powered directive and notice creation** via OpenAI function calling
+    - Can create directives (tasks) when requested
+    - Can create notices (reminders) when requested
+    - Intelligently asks for missing information (priority, due date, scheduling time)
+    - Automatically validates and creates items via API
   - Assistance with mission planning, directive prioritization, and operational insights
   - Robust error handling for API failures
   - Auto-scroll to latest messages
   - Conversation history maintained in session
+  - **Auto-refresh**: Data automatically refreshes after AI responses to show newly created items
 
 ### Directives
 - Create/edit/delete tasks
