@@ -1,0 +1,116 @@
+You are building a fresh project called “Blue Dog Command” with a tactical/military theme.
+
+## Tech Stack (match exactly)
+- Frontend: Vite + React 18 + TypeScript + Tailwind CSS + React Router + Zustand (state) + Framer Motion + lucide-react + shadcn/ui
+- Backend: Express (TypeScript, ESM) in `server/index.ts`
+- DB: SQLite (via better-sqlite3) OR an in-memory store that persists to JSON if SQLite not available
+- Build scripts must match:
+  "dev": "NODE_ENV=development tsx server/index.ts"
+  "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist"
+  "start": "NODE_ENV=production node dist/index.js"
+  "check": "tsc"
+- TypeScript strict, path aliases `@/` → `src/`
+
+## App Concept
+A command-style app with three routes:
+1) Dashboard — title **“Situation Room”**
+2) To-dos — title **“Directives”**
+3) Reminders — title **“Op Notices”**
+
+## Design & Theme
+- Visual vibe: minimalistic military command UI
+- Colors:
+  - Blue Dog Blue: #041BB3 (primary accents)
+  - Gunmetal: #2B2B2B (background)
+  - Slate: #1F2937 / #111827 for panels
+  - Gray: #828282 (muted text)
+  - Amber: #FBAE17 (warning/notice)
+  - Success green: #16A34A
+  - Critical red: #DC2626
+- Typography:
+  - Headings: Rajdhani or Orbitron (fallback to system sans if unavailable)
+  - Body: Inter
+  - Optional monospace elements for “terminal” feel: Roboto Mono
+- Components use shadcn/ui where it makes sense (Card, Button, Input, Badge, Dialog, Dropdown, Tabs, Toast)
+- Subtle motion using Framer Motion (fade/slide on route switch, micro-interactions on hover/press)
+- Time-of-day greeting in the header: “Good morning/afternoon/evening, Commander”
+- Dark mode only by default
+
+## Project Structure
+- /server
+  - index.ts (Express, JSON body parsing, CORS, static serving of Vite build)
+  - db.ts (SQLite helper OR JSON persistence fallback)
+  - routes
+    - directives.ts (CRUD for tasks)
+    - notices.ts (CRUD for reminders)
+    - status.ts (summary counts for dashboard)
+- /client (Vite default)
+  - index.html
+  - src/
+    - main.tsx
+    - app.css (Tailwind base plus CSS vars for theme)
+    - lib/
+      - api.ts (fetch helpers)
+      - time.ts (formatDate, tz helpers)
+    - store/
+      - useUI.ts (sidebar open/close, theme)
+    - components/
+      - Shell.tsx (app chrome: sidebar + header + content area)
+      - Nav.tsx (nav items: Situation Room, Directives, Op Notices with icons)
+      - KpiCard.tsx, Stat.tsx, Empty.tsx, ConfirmDialog.tsx
+      - DirectiveForm.tsx, NoticeForm.tsx
+    - pages/
+      - SituationRoom.tsx
+      - Directives.tsx
+      - OpNotices.tsx
+    - router.tsx
+
+## Backend Requirements
+Implement REST JSON endpoints:
+
+GET /api/status
+- returns { directives: {total, active, completed}, notices: {upcomingCount}, lastUpdated }
+
+Directives (tasks)
+- GET /api/directives?status=all|active|completed&priority=low|med|high
+- POST /api/directives  body: { title, notes?, priority: 'low'|'med'|'high', dueAt?: ISO }
+- PATCH /api/directives/:id  body: partial fields (title, notes, priority, dueAt, completed:boolean)
+- DELETE /api/directives/:id
+
+Op Notices (reminders)
+- GET /api/notices?from&to (ISO strings)
+- POST /api/notices  body: { title, notes?, at: ISO, repeat?: 'none'|'daily'|'weekly'|'monthly' }
+- PATCH /api/notices/:id  (title, notes, at, repeat)
+- DELETE /api/notices/:id
+
+Data model (SQLite recommended):
+- directives: id (text uuid), title (text), notes (text), priority (text), due_at (text nullable), completed (int), created_at (text), updated_at (text)
+- notices: id (text uuid), title (text), notes (text), at (text ISO), repeat (text), created_at (text), updated_at (text)
+
+Seed: create 3 sample directives (low/med/high) and 2 sample notices (today+2h, tomorrow 0900).
+
+## Express Server Behavior
+- Serve API under /api/*
+- Serve Vite dev in development with proxy; serve `dist/client` in production
+- CORS enabled for dev
+- Use ESM `type: "module"`
+- Use `dotenv` to load PORT; default 5173 for Vite, 3000 server. Server listens on 3000
+- Health check GET /api/health → { ok: true }
+
+## Tailwind Setup
+- Configure Tailwind with shadcn preset; add container, spacing, rounded-2xl, shadow utilities
+- Define CSS variables for theme colors and use them in Tailwind config (e.g., --bd-primary: #041BB3)
+- Global background: radial subtle noise or solid gunmetal; cards slightly lighter
+- Focus states visible and accessible
+
+## React App Shell
+Header:
+- Left: App title + current route title (“Situation Room”, “Directives”, “Op Notices”)
+- Center: time-of-day greeting + current date (e.g., “Fri, Nov 7, 2025 • 22:10”)
+- Right: Quick actions (Add Directive, Add Notice), search input (client-side filter)
+
+Sidebar:
+- Nav groups:
+  - Situation Room (icon: layout-dashboard)
+  - Directives (icon: list-checks)
+  - Op
