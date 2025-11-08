@@ -10,6 +10,7 @@ import SituationRoom from "@/pages/SituationRoom";
 import Directives from "@/pages/Directives";
 import OpNotices from "@/pages/OpNotices";
 import Calendar from "@/pages/Calendar";
+import Resupply from "@/pages/Resupply";
 import NotFound from "@/pages/not-found";
 import type { InsertDirective, InsertNotice } from "@shared/schema";
 
@@ -44,6 +45,7 @@ function Router() {
         <Route path="/directives" component={Directives} />
         <Route path="/notices" component={OpNotices} />
         <Route path="/calendar" component={Calendar} />
+        <Route path="/resupply" component={Resupply} />
         <Route component={NotFound} />
       </Switch>
     </Shell>

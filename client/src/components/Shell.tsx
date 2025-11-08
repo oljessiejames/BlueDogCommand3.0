@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Plus, Bell, ListChecks, LayoutDashboard, Calendar } from "lucide-react";
+import { Plus, Bell, ListChecks, LayoutDashboard, Calendar, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -44,6 +44,11 @@ const navItems = [
     title: "Calendar",
     path: "/calendar",
     icon: Calendar,
+  },
+  {
+    title: "Resupply",
+    path: "/resupply",
+    icon: ShoppingCart,
   },
 ];
 
