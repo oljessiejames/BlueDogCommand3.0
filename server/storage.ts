@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { randomUUID } from "crypto";
-import type { Directive, Notice, InsertDirective, InsertNotice, Status } from "@shared/schema";
+import type { Directive, Notice, InsertDirective, InsertNotice, Status, Store, InsertStore, ResupplyItem, InsertResupplyItem } from "@shared/schema";
 
 export interface IStorage {
   // Directives
@@ -16,6 +16,19 @@ export interface IStorage {
   createNotice(notice: InsertNotice): Promise<Notice>;
   updateNotice(id: string, updates: Partial<InsertNotice>): Promise<Notice>;
   deleteNotice(id: string): Promise<void>;
+
+  // Stores
+  getStores(): Promise<Store[]>;
+  getStore(id: string): Promise<Store | undefined>;
+  createStore(store: InsertStore): Promise<Store>;
+  deleteStore(id: string): Promise<void>;
+
+  // Resupply Items
+  getResupplyItems(filters?: { storeId?: string; category?: string }): Promise<ResupplyItem[]>;
+  getResupplyItem(id: string): Promise<ResupplyItem | undefined>;
+  createResupplyItem(item: InsertResupplyItem): Promise<ResupplyItem>;
+  updateResupplyItem(id: string, updates: Partial<InsertResupplyItem> & { purchased?: boolean }): Promise<ResupplyItem>;
+  deleteResupplyItem(id: string): Promise<void>;
 
   // Status
   getStatus(): Promise<Status>;
@@ -168,6 +181,105 @@ export class SqliteStorage implements IStorage {
     db.prepare("DELETE FROM notices WHERE id = ?").run(id);
   }
 
+  // Stores
+  async getStores(): Promise<Store[]> {
+    const rows = db.prepare("SELECT * FROM stores ORDER BY name ASC").all() as any[];
+    return rows.map(this.mapStoreFromDb);
+  }
+
+  async getStore(id: string): Promise<Store | undefined> {
+    const row = db.prepare("SELECT * FROM stores WHERE id = ?").get(id) as any;
+    return row ? this.mapStoreFromDb(row) : undefined;
+  }
+
+  async createStore(store: InsertStore): Promise<Store> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO stores (id, name, created_at)
+      VALUES (?, ?, ?)
+    `).run(id, store.name, now);
+
+    return (await this.getStore(id))!;
+  }
+
+  async deleteStore(id: string): Promise<void> {
+    db.prepare("DELETE FROM stores WHERE id = ?").run(id);
+  }
+
+  // Resupply Items
+  async getResupplyItems(filters?: { storeId?: string; category?: string }): Promise<ResupplyItem[]> {
+    let query = "SELECT * FROM resupply_items WHERE purchased = 0";
+    const params: any[] = [];
+
+    if (filters?.storeId && filters.storeId !== "all") {
+      query += " AND store_id = ?";
+      params.push(filters.storeId);
+    }
+
+    if (filters?.category && filters.category !== "all") {
+      query += " AND category = ?";
+      params.push(filters.category);
+    }
+
+    query += " ORDER BY created_at DESC";
+
+    const rows = db.prepare(query).all(...params) as any[];
+    return rows.map(this.mapResupplyItemFromDb);
+  }
+
+  async getResupplyItem(id: string): Promise<ResupplyItem | undefined> {
+    const row = db.prepare("SELECT * FROM resupply_items WHERE id = ?").get(id) as any;
+    return row ? this.mapResupplyItemFromDb(row) : undefined;
+  }
+
+  async createResupplyItem(item: InsertResupplyItem): Promise<ResupplyItem> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO resupply_items (id, item, quantity, category, store_id, purchased, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(
+      id,
+      item.item,
+      item.quantity,
+      item.category,
+      item.storeId,
+      now,
+      now
+    );
+
+    return (await this.getResupplyItem(id))!;
+  }
+
+  async updateResupplyItem(id: string, updates: Partial<InsertResupplyItem> & { purchased?: boolean }): Promise<ResupplyItem> {
+    const current = await this.getResupplyItem(id);
+    if (!current) {
+      throw new Error("Resupply item not found");
+    }
+
+    const now = new Date().toISOString();
+    const item = updates.item ?? current.item;
+    const quantity = updates.quantity ?? current.quantity;
+    const category = updates.category ?? current.category;
+    const storeId = updates.storeId ?? current.storeId;
+    const purchased = updates.purchased !== undefined ? (updates.purchased ? 1 : 0) : (current.purchased ? 1 : 0);
+
+    db.prepare(`
+      UPDATE resupply_items
+      SET item = ?, quantity = ?, category = ?, store_id = ?, purchased = ?, updated_at = ?
+      WHERE id = ?
+    `).run(item, quantity, category, storeId, purchased, now, id);
+
+    return (await this.getResupplyItem(id))!;
+  }
+
+  async deleteResupplyItem(id: string): Promise<void> {
+    db.prepare("DELETE FROM resupply_items WHERE id = ?").run(id);
+  }
+
   // Status
   async getStatus(): Promise<Status> {
     const directivesTotal = db.prepare("SELECT COUNT(*) as count FROM directives").get() as { count: number };
@@ -212,6 +324,27 @@ export class SqliteStorage implements IStorage {
       priority: row.priority,
       at: row.at,
       repeat: row.repeat as "none" | "daily" | "weekly" | "monthly",
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private mapStoreFromDb(row: any): Store {
+    return {
+      id: row.id,
+      name: row.name,
+      createdAt: row.created_at,
+    };
+  }
+
+  private mapResupplyItemFromDb(row: any): ResupplyItem {
+    return {
+      id: row.id,
+      item: row.item,
+      quantity: row.quantity,
+      category: row.category,
+      storeId: row.store_id,
+      purchased: row.purchased === 1,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

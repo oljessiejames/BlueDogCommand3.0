@@ -108,3 +108,39 @@ export const excelImportSchema = z.object({
 });
 
 export type ExcelImport = z.infer<typeof excelImportSchema>;
+
+// Store Schema (for resupply items)
+export const storeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+});
+
+export const insertStoreSchema = z.object({
+  name: z.string().min(1, "Store name is required"),
+});
+
+export type Store = z.infer<typeof storeSchema>;
+export type InsertStore = z.infer<typeof insertStoreSchema>;
+
+// Resupply Item Schema
+export const resupplyItemSchema = z.object({
+  id: z.string(),
+  item: z.string(),
+  quantity: z.string(),
+  category: z.string(),
+  storeId: z.string(),
+  purchased: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const insertResupplyItemSchema = z.object({
+  item: z.string().min(1, "Item name is required"),
+  quantity: z.string().min(1, "Quantity is required"),
+  category: z.string().min(1, "Category is required"),
+  storeId: z.string().min(1, "Store is required"),
+});
+
+export type ResupplyItem = z.infer<typeof resupplyItemSchema>;
+export type InsertResupplyItem = z.infer<typeof insertResupplyItemSchema>;
