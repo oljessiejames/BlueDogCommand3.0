@@ -149,7 +149,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Chat endpoint with OpenAI streaming
+  // Chat endpoint with OpenAI streaming and function calling
   app.post("/api/chat", async (req, res) => {
     let streamingStarted = false;
     
@@ -165,30 +165,205 @@ export async function registerRoutes(app: Express): Promise<Server> {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
+      // Define tools/functions the AI can call
+      const tools = [
+        {
+          type: "function" as const,
+          function: {
+            name: "create_directive",
+            description: "Create a new directive (task) in the Blue Dog Command system. Use this when the user wants to add a task or directive. Priority levels: Alpha (critical), Bravo (high), Charlie (medium), Delta (low).",
+            parameters: {
+              type: "object",
+              properties: {
+                title: {
+                  type: "string",
+                  description: "The directive title/summary (required)"
+                },
+                notes: {
+                  type: "string",
+                  description: "Additional details or notes about the directive (optional)"
+                },
+                priority: {
+                  type: "string",
+                  enum: ["Alpha", "Bravo", "Charlie", "Delta"],
+                  description: "Priority level: Alpha (critical/immediate), Bravo (high/24-48hr), Charlie (medium/routine), Delta (low/can postpone)"
+                },
+                dueAt: {
+                  type: "string",
+                  description: "Due date/time in ISO 8601 format (optional, e.g., '2024-12-25T14:30:00Z')"
+                }
+              },
+              required: ["title", "priority"]
+            }
+          }
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "create_notice",
+            description: "Create a new operational notice (reminder) in the Blue Dog Command system. Use this when the user wants to set a reminder or schedule a notice.",
+            parameters: {
+              type: "object",
+              properties: {
+                title: {
+                  type: "string",
+                  description: "The notice title/summary (required)"
+                },
+                notes: {
+                  type: "string",
+                  description: "Additional details about the notice (optional)"
+                },
+                priority: {
+                  type: "string",
+                  enum: ["Alpha", "Bravo", "Charlie", "Delta"],
+                  description: "Priority level: Alpha (critical), Bravo (high), Charlie (medium), Delta (low)"
+                },
+                at: {
+                  type: "string",
+                  description: "When the notice should trigger, in ISO 8601 format (required, e.g., '2024-12-25T09:00:00Z')"
+                },
+                repeat: {
+                  type: "string",
+                  enum: ["none", "daily", "weekly", "monthly"],
+                  description: "How often the notice should repeat (optional, defaults to 'none')"
+                }
+              },
+              required: ["title", "priority", "at"]
+            }
+          }
+        }
+      ];
+
       // Set headers for streaming
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
       streamingStarted = true;
 
-      // Create streaming completion with system prompt for tactical assistant
-      const stream = await openai.chat.completions.create({
+      // Create initial completion with tools
+      const response = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
-            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. Provide concise, professional responses using military terminology where appropriate. Keep responses brief and actionable.'
+            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders). When users ask you to create these items, use the provided functions. If you need more information (like priority level, due date, or scheduling time), ask the user for those details before calling the function. Provide concise, professional responses using military terminology where appropriate.'
           },
           ...messages
         ],
-        stream: true,
+        tools,
+        tool_choice: "auto",
         temperature: 0.7,
       });
 
-      // Stream chunks to client
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        if (content) {
-          res.write(content);
+      const responseMessage = response.choices[0].message;
+
+      // Check if AI wants to call functions
+      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        // Execute all tool calls
+        const toolResults = [];
+        
+        for (const toolCall of responseMessage.tool_calls) {
+          if (toolCall.type !== 'function') continue;
+          
+          const functionName = toolCall.function.name;
+          const functionArgs = JSON.parse(toolCall.function.arguments);
+          
+          let result;
+          try {
+            if (functionName === "create_directive") {
+              const directiveData = {
+                title: functionArgs.title,
+                notes: functionArgs.notes || null,
+                priority: functionArgs.priority,
+                dueAt: functionArgs.dueAt || null,
+              };
+              
+              const validated = insertDirectiveSchema.parse(directiveData);
+              const directive = await storage.createDirective(validated);
+              result = {
+                success: true,
+                directive,
+                message: `Directive created successfully: "${directive.title}" (Priority ${directive.priority})`
+              };
+            } else if (functionName === "create_notice") {
+              const noticeData = {
+                title: functionArgs.title,
+                notes: functionArgs.notes || null,
+                priority: functionArgs.priority,
+                at: functionArgs.at,
+                repeat: functionArgs.repeat || "none",
+              };
+              
+              const validated = insertNoticeSchema.parse(noticeData);
+              const notice = await storage.createNotice(validated);
+              result = {
+                success: true,
+                notice,
+                message: `Notice created successfully: "${notice.title}" scheduled for ${new Date(notice.at).toLocaleString()}`
+              };
+            } else {
+              result = { success: false, error: "Unknown function" };
+            }
+          } catch (error) {
+            console.error(`Error executing ${functionName}:`, error);
+            result = { 
+              success: false, 
+              error: error instanceof Error ? error.message : "Failed to execute function"
+            };
+          }
+          
+          toolResults.push({
+            tool_call_id: toolCall.id,
+            role: "tool" as const,
+            name: functionName,
+            content: JSON.stringify(result)
+          });
+        }
+
+        // Get final response from AI after function execution
+        const finalResponse = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders). When users ask you to create these items, use the provided functions. If you need more information (like priority level, due date, or scheduling time), ask the user for those details before calling the function. Provide concise, professional responses using military terminology where appropriate.'
+            },
+            ...messages,
+            responseMessage,
+            ...toolResults
+          ],
+          stream: true,
+          temperature: 0.7,
+        });
+
+        // Stream the final response
+        for await (const chunk of finalResponse) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          if (content) {
+            res.write(content);
+          }
+        }
+      } else {
+        // No function calls, just stream the regular response
+        const stream = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders). When users ask you to create these items, use the provided functions. If you need more information (like priority level, due date, or scheduling time), ask the user for those details before calling the function. Provide concise, professional responses using military terminology where appropriate.'
+            },
+            ...messages
+          ],
+          tools,
+          tool_choice: "auto",
+          stream: true,
+          temperature: 0.7,
+        });
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          if (content) {
+            res.write(content);
+          }
         }
       }
 

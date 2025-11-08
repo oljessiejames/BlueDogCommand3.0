@@ -12,6 +12,7 @@ import { sortByPriority } from "@/lib/priority";
 import { formatDateTime, formatRelativeTime } from "@/lib/time";
 import type { Status, Directive, Notice, ChatMessage } from "@shared/schema";
 import { useState, useRef, useEffect } from "react";
+import { queryClient } from "@/lib/queryClient";
 
 export default function SituationRoom() {
   const [, setLocation] = useLocation();
@@ -133,6 +134,11 @@ export default function SituationRoom() {
       }
     } finally {
       setIsStreaming(false);
+      
+      // Refresh data in case AI created directives or notices
+      queryClient.invalidateQueries({ queryKey: ['/api/directives'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notices'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/status'] });
     }
   };
 
