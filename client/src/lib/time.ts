@@ -41,10 +41,24 @@ export function getCurrentDateTime(): string {
 }
 
 export function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
+  const now = new Date();
+  const hour = now.getHours();
+
+  if (hour >= 1 && hour < 11) {
+    return "Zero Dark-Thirty, let's go Commander.";
+  } else if (hour >= 11 && hour < 17) {
+    return "Halfway to exfil, keep moving.";
+  } else {
+    return "Nightwatch ready, Commander.";
+  }
+}
+
+export function getFormattedTime(): string {
+  return new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 export function isPastDue(dateString: string | null): boolean {

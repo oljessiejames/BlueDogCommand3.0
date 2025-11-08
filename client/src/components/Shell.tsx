@@ -13,7 +13,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { getCurrentDateTime, getGreeting } from "@/lib/time";
+import { getGreeting, getFormattedTime } from "@/lib/time";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +52,8 @@ interface ShellProps {
 
 export function Shell({ children, onCreateDirective, onCreateNotice, isCreatingDirective, isCreatingNotice }: ShellProps) {
   const [location] = useLocation();
-  const [currentTime, setCurrentTime] = useState(getCurrentDateTime());
+  const [currentTime, setCurrentTime] = useState(getFormattedTime());
+  const [greeting, setGreeting] = useState(getGreeting());
   const [directiveDialogOpen, setDirectiveDialogOpen] = useState(false);
   const [noticeDialogOpen, setNoticeDialogOpen] = useState(false);
 
@@ -60,7 +61,8 @@ export function Shell({ children, onCreateDirective, onCreateNotice, isCreatingD
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentTime(getCurrentDateTime());
+      setCurrentTime(getFormattedTime());
+      setGreeting(getGreeting());
     }, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -115,8 +117,8 @@ export function Shell({ children, onCreateDirective, onCreateNotice, isCreatingD
 
             <div className="flex items-center gap-4">
               <div className="hidden md:block text-center">
-                <p className="text-sm font-medium" data-testid="text-greeting">
-                  {getGreeting()}, Commander
+                <p className="text-sm font-medium font-heading" data-testid="text-greeting">
+                  {greeting}
                 </p>
                 <p className="text-xs text-muted-foreground font-mono" data-testid="text-current-time">
                   {currentTime}
