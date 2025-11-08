@@ -5,7 +5,7 @@ A tactical military-themed command center application for managing operational d
 ## Project Overview
 
 Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features three main sections:
-- **Situation Room**: Dashboard with KPI metrics and operational status
+- **Situation Room**: Dashboard with KPI metrics, operational status, and AI-powered tactical assistant
 - **Directives**: Task management with priority levels and completion tracking
 - **Op Notices**: Scheduled reminders with repeat options
 
@@ -25,6 +25,7 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Express (TypeScript with ESM modules)
 - SQLite via better-sqlite3 (data persistence)
 - Zod (validation)
+- OpenAI API (GPT-3.5-turbo for tactical AI assistant)
 
 ## Project Structure
 
@@ -94,6 +95,12 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - `GET /api/status` - Dashboard metrics
 - `GET /api/health` - Health check
 
+### Chat
+- `POST /api/chat` - Stream AI responses from tactical assistant
+  - Request body: `{ messages: [{ role: "user" | "assistant" | "system", content: string }] }`
+  - Response: Streaming text/plain with chunked transfer encoding
+  - Uses OpenAI GPT-3.5-turbo with tactical military system prompt
+
 ## Data Models
 
 ### Directive
@@ -132,6 +139,13 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Total directives count
 - Upcoming notices count
 - Operational status display
+- **Tactical AI Assistant** (OpenAI GPT-3.5-turbo)
+  - Real-time streaming chat interface
+  - Military-themed AI responses
+  - Assistance with mission planning, directive prioritization, and operational insights
+  - Robust error handling for API failures
+  - Auto-scroll to latest messages
+  - Conversation history maintained in session
 
 ### Directives
 - Create/edit/delete tasks
