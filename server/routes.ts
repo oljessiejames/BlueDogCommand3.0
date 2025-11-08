@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema, excelImportSchema, type CalendarEvent } from "@shared/schema";
+import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema, excelImportSchema, insertStoreSchema, insertResupplyItemSchema, type CalendarEvent } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
@@ -272,6 +272,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error importing from Excel:", error);
       res.status(500).json({ error: "Failed to import from Excel" });
+    }
+  });
+
+  // Stores endpoints
+  app.get("/api/stores", async (req, res) => {
+    try {
+      const stores = await storage.getStores();
+      res.json(stores);
+    } catch (error) {
+      console.error("Error getting stores:", error);
+      res.status(500).json({ error: "Failed to get stores" });
+    }
+  });
+
+  app.post("/api/stores", async (req, res) => {
+    try {
+      const data = insertStoreSchema.parse(req.body);
+      const store = await storage.createStore(data);
+      res.json(store);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error("Error creating store:", error);
+        res.status(500).json({ error: "Failed to create store" });
+      }
+    }
+  });
+
+  app.delete("/api/stores/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteStore(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting store:", error);
+      res.status(500).json({ error: "Failed to delete store" });
+    }
+  });
+
+  // Resupply Items endpoints
+  app.get("/api/resupply", async (req, res) => {
+    try {
+      const { storeId, category } = req.query;
+      const items = await storage.getResupplyItems({
+        storeId: storeId as string,
+        category: category as string,
+      });
+      res.json(items);
+    } catch (error) {
+      console.error("Error getting resupply items:", error);
+      res.status(500).json({ error: "Failed to get resupply items" });
+    }
+  });
+
+  app.post("/api/resupply", async (req, res) => {
+    try {
+      const data = insertResupplyItemSchema.parse(req.body);
+      const item = await storage.createResupplyItem(data);
+      res.json(item);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error("Error creating resupply item:", error);
+        res.status(500).json({ error: "Failed to create resupply item" });
+      }
+    }
+  });
+
+  app.patch("/api/resupply/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { purchased, ...updates } = req.body;
+
+      const item = await storage.updateResupplyItem(id, {
+        ...updates,
+        purchased: purchased !== undefined ? Boolean(purchased) : undefined,
+      });
+      res.json(item);
+    } catch (error) {
+      if ((error as Error).message === "Resupply item not found") {
+        res.status(404).json({ error: "Resupply item not found" });
+      } else {
+        console.error("Error updating resupply item:", error);
+        res.status(500).json({ error: "Failed to update resupply item" });
+      }
+    }
+  });
+
+  app.delete("/api/resupply/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteResupplyItem(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting resupply item:", error);
+      res.status(500).json({ error: "Failed to delete resupply item" });
     }
   });
 
