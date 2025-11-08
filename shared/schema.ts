@@ -63,3 +63,16 @@ export const statusSchema = z.object({
 });
 
 export type Status = z.infer<typeof statusSchema>;
+
+// Chat Message Schema
+export const chatMessageSchema = z.object({
+  role: z.enum(["user", "assistant", "system"]),
+  content: z.string(),
+});
+
+export const chatRequestSchema = z.object({
+  messages: z.array(chatMessageSchema),
+});
+
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type ChatRequest = z.infer<typeof chatRequestSchema>;
