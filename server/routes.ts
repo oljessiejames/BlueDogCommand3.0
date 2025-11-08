@@ -1,8 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertDirectiveSchema, insertNoticeSchema } from "@shared/schema";
+import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema } from "@shared/schema";
 import { z } from "zod";
+import OpenAI from "openai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check
@@ -145,6 +146,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting notice:", error);
       res.status(500).json({ error: "Failed to delete notice" });
+    }
+  });
+
+  // Chat endpoint with OpenAI streaming
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { messages } = chatRequestSchema.parse(req.body);
+
+      if (!process.env.OPENAI_API_KEY) {
+        res.status(500).json({ error: "OpenAI API key not configured" });
+        return;
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+
+      // Set headers for streaming
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Transfer-Encoding', 'chunked');
+
+      // Create streaming completion with system prompt for tactical assistant
+      const stream = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. Provide concise, professional responses using military terminology where appropriate. Keep responses brief and actionable.'
+          },
+          ...messages
+        ],
+        stream: true,
+        temperature: 0.7,
+      });
+
+      // Stream chunks to client
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content) {
+          res.write(content);
+        }
+      }
+
+      res.end();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid request data", details: error.errors });
+      } else {
+        console.error("Error in chat:", error);
+        res.status(500).json({ error: "Failed to process chat request" });
+      }
     }
   });
 
