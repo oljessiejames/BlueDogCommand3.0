@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema, excelImportSchema, insertStoreSchema, insertResupplyItemSchema, type CalendarEvent } from "@shared/schema";
+import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema, excelImportSchema, insertStoreSchema, insertCategorySchema, insertResupplyItemSchema, type CalendarEvent } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
@@ -312,13 +312,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Categories endpoints
+  app.get("/api/categories", async (req, res) => {
+    try {
+      const categories = await storage.getCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error("Error getting categories:", error);
+      res.status(500).json({ error: "Failed to get categories" });
+    }
+  });
+
+  app.post("/api/categories", async (req, res) => {
+    try {
+      const data = insertCategorySchema.parse(req.body);
+      const category = await storage.createCategory(data);
+      res.json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error("Error creating category:", error);
+        res.status(500).json({ error: "Failed to create category" });
+      }
+    }
+  });
+
+  app.delete("/api/categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteCategory(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      res.status(500).json({ error: "Failed to delete category" });
+    }
+  });
+
   // Resupply Items endpoints
   app.get("/api/resupply", async (req, res) => {
     try {
-      const { storeId, category } = req.query;
+      const { storeId, categoryId } = req.query;
       const items = await storage.getResupplyItems({
         storeId: storeId as string,
-        category: category as string,
+        categoryId: categoryId as string,
       });
       res.json(items);
     } catch (error) {
