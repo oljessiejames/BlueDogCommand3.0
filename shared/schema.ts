@@ -123,12 +123,26 @@ export const insertStoreSchema = z.object({
 export type Store = z.infer<typeof storeSchema>;
 export type InsertStore = z.infer<typeof insertStoreSchema>;
 
+// Category Schema
+export const categorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+});
+
+export const insertCategorySchema = z.object({
+  name: z.string().min(1, "Category name is required"),
+});
+
+export type Category = z.infer<typeof categorySchema>;
+export type InsertCategory = z.infer<typeof insertCategorySchema>;
+
 // Resupply Item Schema
 export const resupplyItemSchema = z.object({
   id: z.string(),
   item: z.string(),
   quantity: z.string(),
-  category: z.string(),
+  categoryId: z.string(),
   storeId: z.string(),
   purchased: z.boolean(),
   createdAt: z.string(),
@@ -138,7 +152,7 @@ export const resupplyItemSchema = z.object({
 export const insertResupplyItemSchema = z.object({
   item: z.string().min(1, "Item name is required"),
   quantity: z.string().min(1, "Quantity is required"),
-  category: z.string().min(1, "Category is required"),
+  categoryId: z.string().min(1, "Category is required"),
   storeId: z.string().min(1, "Store is required"),
 });
 
