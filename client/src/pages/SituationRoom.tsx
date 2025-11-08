@@ -1,16 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity, Bell, ChevronRight } from "lucide-react";
+import { Activity, Bell, ChevronRight, Send, MessageSquare } from "lucide-react";
 import { useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { sortByPriority } from "@/lib/priority";
 import { formatDateTime, formatRelativeTime } from "@/lib/time";
-import type { Status, Directive, Notice } from "@shared/schema";
+import type { Status, Directive, Notice, ChatMessage } from "@shared/schema";
+import { useState, useRef, useEffect } from "react";
 
 export default function SituationRoom() {
   const [, setLocation] = useLocation();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { data: status, isLoading: statusLoading } = useQuery<Status>({
     queryKey: ['/api/status'],
@@ -35,6 +43,98 @@ export default function SituationRoom() {
   });
 
   const isLoading = statusLoading || directivesLoading || noticesLoading;
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSendMessage = async () => {
+    if (!input.trim() || isStreaming) return;
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: input.trim(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsStreaming(true);
+
+    let placeholderAdded = false;
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [...messages, userMessage],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No reader available");
+      }
+
+      let assistantMessage = "";
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "" },
+      ]);
+      placeholderAdded = true;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        assistantMessage += chunk;
+
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          newMessages[newMessages.length - 1] = {
+            role: "assistant",
+            content: assistantMessage,
+          };
+          return newMessages;
+        });
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+      
+      if (placeholderAdded) {
+        // Replace the empty placeholder with error message
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          newMessages[newMessages.length - 1] = {
+            role: "assistant",
+            content: "Error: Unable to get response. Please try again.",
+          };
+          return newMessages;
+        });
+      } else {
+        // No placeholder yet, add error message
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Error: Unable to get response. Please try again.",
+          },
+        ]);
+      }
+    } finally {
+      setIsStreaming(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -218,6 +318,93 @@ export default function SituationRoom() {
               <div className="px-3 py-1 rounded-md bg-chart-2/10 text-chart-2 text-xs font-mono">
                 NORMAL
               </div>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
+      >
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold font-heading">Tactical AI Assistant</h3>
+          </div>
+          
+          <div className="space-y-4">
+            <ScrollArea className="h-[400px] pr-4">
+              <div className="space-y-4">
+                {messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-[360px] text-center">
+                    <div className="space-y-2">
+                      <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto opacity-50" />
+                      <p className="text-sm text-muted-foreground">
+                        Ask the tactical AI for assistance with mission planning,<br />
+                        directive prioritization, or operational insights.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                      data-testid={`chat-message-${message.role}-${index}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-md p-4 ${
+                          message.role === "user"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted"
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1">
+                            <p className="text-xs font-mono mb-1 opacity-70">
+                              {message.role === "user" ? "OPERATOR" : "TACTICAL AI"}
+                            </p>
+                            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+
+            <div className="flex gap-2 pt-4 border-t">
+              <Input
+                type="text"
+                placeholder="Enter your tactical query..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                disabled={isStreaming}
+                className="flex-1"
+                data-testid="input-chat-message"
+              />
+              <Button
+                onClick={handleSendMessage}
+                disabled={!input.trim() || isStreaming}
+                size="icon"
+                data-testid="button-send-chat"
+              >
+                {isStreaming ? (
+                  <div className="h-4 w-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
             </div>
           </div>
         </Card>

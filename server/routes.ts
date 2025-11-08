@@ -151,6 +151,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Chat endpoint with OpenAI streaming
   app.post("/api/chat", async (req, res) => {
+    let streamingStarted = false;
+    
     try {
       const { messages } = chatRequestSchema.parse(req.body);
 
@@ -166,6 +168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Set headers for streaming
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
+      streamingStarted = true;
 
       // Create streaming completion with system prompt for tactical assistant
       const stream = await openai.chat.completions.create({
@@ -191,11 +194,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.end();
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ error: "Invalid request data", details: error.errors });
+      console.error("Error in chat:", error);
+      
+      // Check if we've already started streaming
+      if (streamingStarted && res.headersSent) {
+        // Headers already sent, can't send JSON error
+        // Write error message and end the stream
+        try {
+          res.write('\n\n[Error: Unable to complete response]');
+        } catch (writeError) {
+          // Ignore write errors if connection is closed
+        }
+        res.end();
       } else {
-        console.error("Error in chat:", error);
-        res.status(500).json({ error: "Failed to process chat request" });
+        // Headers not sent yet, can send proper error response
+        if (error instanceof z.ZodError) {
+          res.status(400).json({ error: "Invalid request data", details: error.errors });
+        } else {
+          res.status(500).json({ error: "Failed to process chat request" });
+        }
       }
     }
   });
