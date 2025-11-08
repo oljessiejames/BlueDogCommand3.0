@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { priorityLevels } from "@shared/schema";
 import type { PriorityLevel } from "@/lib/priority";
+import { priorityOrder } from "@/lib/priority";
 import {
   Select,
   SelectContent,
@@ -39,9 +40,12 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Directive, InsertDirective } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type SortOption = "priority" | "due-earliest" | "due-latest" | "title";
+
 export default function Directives() {
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed">("active");
   const [priorityFilter, setPriorityFilter] = useState<"all" | PriorityLevel>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("priority");
   const [editingDirective, setEditingDirective] = useState<Directive | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -49,9 +53,31 @@ export default function Directives() {
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
   if (priorityFilter !== "all") queryParams.set("priority", priorityFilter);
 
-  const { data: directives = [], isLoading } = useQuery<Directive[]>({
+  const { data: directivesData = [], isLoading } = useQuery<Directive[]>({
     queryKey: ['/api/directives', statusFilter, priorityFilter],
     queryFn: () => fetch(`/api/directives?${queryParams}`).then(r => r.json()),
+  });
+
+  // Apply client-side sorting
+  const directives = [...directivesData].sort((a, b) => {
+    switch (sortBy) {
+      case "priority":
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+      case "due-earliest":
+        if (!a.dueAt && !b.dueAt) return 0;
+        if (!a.dueAt) return 1;
+        if (!b.dueAt) return -1;
+        return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+      case "due-latest":
+        if (!a.dueAt && !b.dueAt) return 0;
+        if (!a.dueAt) return 1;
+        if (!b.dueAt) return -1;
+        return new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
+      case "title":
+        return a.title.localeCompare(b.title);
+      default:
+        return 0;
+    }
   });
 
   const updateMutation = useMutation({
@@ -132,6 +158,18 @@ export default function Directives() {
                 {level}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+          <SelectTrigger className="w-44" data-testid="select-sort-by">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="priority" data-testid="option-sort-priority">Sort by Priority</SelectItem>
+            <SelectItem value="due-earliest" data-testid="option-sort-due-earliest">Due Date (Earliest)</SelectItem>
+            <SelectItem value="due-latest" data-testid="option-sort-due-latest">Due Date (Latest)</SelectItem>
+            <SelectItem value="title" data-testid="option-sort-title">Sort by Title</SelectItem>
           </SelectContent>
         </Select>
       </div>
