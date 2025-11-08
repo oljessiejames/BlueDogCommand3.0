@@ -1,15 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity, CheckCircle2, Clock, ListChecks } from "lucide-react";
+import { Activity, CheckCircle2, Clock, ListChecks, ChevronRight } from "lucide-react";
+import { useLocation } from "wouter";
 import { KpiCard } from "@/components/KpiCard";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Status } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
+import type { Status, Directive } from "@shared/schema";
 
 export default function SituationRoom() {
-  const { data: status, isLoading } = useQuery<Status>({
+  const [, setLocation] = useLocation();
+  
+  const { data: status, isLoading: statusLoading } = useQuery<Status>({
     queryKey: ['/api/status'],
   });
+
+  const { data: activeDirectives = [], isLoading: directivesLoading } = useQuery<Directive[]>({
+    queryKey: ['/api/directives', 'status', 'active'],
+    queryFn: async () => {
+      const response = await fetch('/api/directives?status=active');
+      if (!response.ok) throw new Error('Failed to fetch directives');
+      return response.json();
+    },
+  });
+
+  const isLoading = statusLoading || directivesLoading;
 
   if (isLoading) {
     return (
@@ -31,6 +46,22 @@ export default function SituationRoom() {
     ? Math.round((status.directives.completed / status.directives.total) * 100)
     : 0;
 
+  // Sort directives by priority (high > med > low) and get top 5
+  // Copy array to avoid mutating cached data
+  const priorityOrder = { high: 3, med: 2, low: 1 };
+  const topDirectives = [...activeDirectives]
+    .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
+    .slice(0, 5);
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'bg-destructive/10 text-destructive border-destructive/20';
+      case 'med': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+      case 'low': return 'bg-primary/10 text-primary border-primary/20';
+      default: return 'bg-muted';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -39,13 +70,58 @@ export default function SituationRoom() {
         transition={{ duration: 0.5 }}
       >
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            title="Active Directives"
-            value={status?.directives.active || 0}
-            icon={Activity}
-            subtitle="Currently in progress"
-            delay={0}
-          />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0 }}
+            className="md:col-span-2"
+          >
+            <Card 
+              className="p-6 hover-elevate cursor-pointer" 
+              data-testid="card-kpi-active-directives"
+              onClick={() => setLocation('/directives')}
+            >
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Active Directives</p>
+                  <p className="text-3xl font-bold font-heading" data-testid="text-kpi-value-active-directives">
+                    {status?.directives.active || 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Top {topDirectives.length} highest priority
+                  </p>
+                </div>
+                <div className="rounded-md bg-primary/10 p-3">
+                  <Activity className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+              
+              {topDirectives.length > 0 ? (
+                <div className="space-y-2 border-t pt-4">
+                  {topDirectives.map((directive, index) => (
+                    <div 
+                      key={directive.id} 
+                      className="flex items-center gap-3 p-2 rounded-md hover-elevate"
+                      data-testid={`directive-preview-${directive.id}`}
+                    >
+                      <Badge 
+                        variant="outline" 
+                        className={`${getPriorityColor(directive.priority)} text-xs font-mono uppercase shrink-0`}
+                      >
+                        {directive.priority}
+                      </Badge>
+                      <span className="text-sm flex-1 truncate">{directive.title}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-4 border-t">
+                  No active directives
+                </div>
+              )}
+            </Card>
+          </motion.div>
           <KpiCard
             title="Completed"
             value={status?.directives.completed || 0}
