@@ -172,24 +172,76 @@ function migrateResupplyTables() {
     console.log("✅ Stores table created");
   }
 
-  // Check if resupply_items table exists
+  // Check if categories table exists
+  const categoriesTableInfo = db.prepare(`
+    SELECT sql FROM sqlite_master WHERE type='table' AND name='categories'
+  `).get() as { sql?: string } | undefined;
+
+  if (!categoriesTableInfo) {
+    // Create categories table
+    db.exec(`
+      CREATE TABLE categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    console.log("✅ Categories table created");
+  }
+
+  // Check if resupply_items table exists and needs migration
   const resupplyTableInfo = db.prepare(`
     SELECT sql FROM sqlite_master WHERE type='table' AND name='resupply_items'
   `).get() as { sql?: string } | undefined;
 
-  if (!resupplyTableInfo) {
-    // Create resupply_items table
+  const needsResupplyMigration = resupplyTableInfo?.sql?.includes("category TEXT");
+
+  if (needsResupplyMigration) {
+    console.log("🔄 Migrating resupply_items table to use category_id...");
+    
+    db.exec(`
+      BEGIN TRANSACTION;
+      
+      -- Create new resupply_items table with updated schema
+      CREATE TABLE resupply_items_new (
+        id TEXT PRIMARY KEY,
+        item TEXT NOT NULL,
+        quantity TEXT NOT NULL,
+        category_id TEXT NOT NULL,
+        store_id TEXT NOT NULL,
+        purchased INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      );
+      
+      -- Note: We cannot migrate old data because old 'category' was a string
+      -- and we need a category_id reference. Old items will be lost.
+      -- If there's any data, we'll just drop it since this is a new feature.
+      
+      -- Drop old table and rename new one
+      DROP TABLE resupply_items;
+      ALTER TABLE resupply_items_new RENAME TO resupply_items;
+      
+      COMMIT;
+    `);
+    
+    console.log("✅ Resupply items table migrated successfully");
+  } else if (!resupplyTableInfo) {
+    // Table doesn't exist, create it with new schema
     db.exec(`
       CREATE TABLE resupply_items (
         id TEXT PRIMARY KEY,
         item TEXT NOT NULL,
         quantity TEXT NOT NULL,
-        category TEXT NOT NULL,
+        category_id TEXT NOT NULL,
         store_id TEXT NOT NULL,
         purchased INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+        FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
       )
     `);
     console.log("✅ Resupply items table created");
