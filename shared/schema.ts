@@ -76,3 +76,35 @@ export const chatRequestSchema = z.object({
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
+
+// Calendar Event Schema (unified view of directives and notices)
+export const calendarEventSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  notes: z.string().nullable(),
+  priority: z.enum(priorityLevels),
+  date: z.string(), // ISO datetime
+  type: z.enum(["directive", "notice"]),
+  completed: z.boolean().optional(),
+  repeat: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
+});
+
+export const calendarEventsRequestSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+});
+
+export type CalendarEvent = z.infer<typeof calendarEventSchema>;
+export type CalendarEventsRequest = z.infer<typeof calendarEventsRequestSchema>;
+
+// Excel import schema
+export const excelImportSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  date: z.string().min(1, "Date is required"),
+  priority: z.enum(priorityLevels).optional(),
+  notes: z.string().optional(),
+  type: z.enum(["directive", "notice"]).optional(),
+  repeat: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
+});
+
+export type ExcelImport = z.infer<typeof excelImportSchema>;

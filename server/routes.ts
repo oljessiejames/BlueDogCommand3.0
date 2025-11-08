@@ -1,9 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema } from "@shared/schema";
+import { insertDirectiveSchema, insertNoticeSchema, chatRequestSchema, excelImportSchema, type CalendarEvent } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
+import * as XLSX from "xlsx";
+import multer from "multer";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check
@@ -146,6 +148,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting notice:", error);
       res.status(500).json({ error: "Failed to delete notice" });
+    }
+  });
+
+  // Calendar endpoints
+  app.get("/api/calendar/events", async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      
+      if (!from || !to) {
+        res.status(400).json({ error: "from and to date parameters are required" });
+        return;
+      }
+
+      // Get directives with due dates in range
+      const allDirectives = await storage.getDirectives({});
+      const directivesInRange = allDirectives.filter(d => {
+        if (!d.dueAt) return false;
+        const dueDate = new Date(d.dueAt);
+        return dueDate >= new Date(from as string) && dueDate <= new Date(to as string);
+      });
+
+      // Get notices in range
+      const notices = await storage.getNotices({
+        from: from as string,
+        to: to as string,
+      });
+
+      // Convert to calendar events
+      const events: CalendarEvent[] = [
+        ...directivesInRange.map(d => ({
+          id: d.id,
+          title: d.title,
+          notes: d.notes,
+          priority: d.priority,
+          date: d.dueAt!,
+          type: "directive" as const,
+          completed: d.completed,
+        })),
+        ...notices.map(n => ({
+          id: n.id,
+          title: n.title,
+          notes: n.notes,
+          priority: n.priority,
+          date: n.at,
+          type: "notice" as const,
+          repeat: n.repeat,
+        })),
+      ];
+
+      // Sort by date
+      events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      res.json(events);
+    } catch (error) {
+      console.error("Error getting calendar events:", error);
+      res.status(500).json({ error: "Failed to get calendar events" });
+    }
+  });
+
+  // Excel import endpoint
+  const upload = multer({ storage: multer.memoryStorage() });
+  
+  app.post("/api/calendar/import", upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+
+      // Parse Excel file
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(worksheet);
+
+      const imported = {
+        directives: 0,
+        notices: 0,
+        errors: [] as string[],
+      };
+
+      // Process each row
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i] as any;
+        
+        try {
+          const importData = excelImportSchema.parse({
+            title: row.title || row.Title || row.TITLE,
+            date: row.date || row.Date || row.DATE,
+            priority: row.priority || row.Priority || row.PRIORITY || "Charlie",
+            notes: row.notes || row.Notes || row.NOTES || undefined,
+            type: row.type || row.Type || row.TYPE || "directive",
+            repeat: row.repeat || row.Repeat || row.REPEAT || "none",
+          });
+
+          // Create directive or notice
+          if (importData.type === "notice") {
+            await storage.createNotice({
+              title: importData.title,
+              notes: importData.notes,
+              priority: importData.priority || "Charlie",
+              at: importData.date,
+              repeat: importData.repeat || "none",
+            });
+            imported.notices++;
+          } else {
+            await storage.createDirective({
+              title: importData.title,
+              notes: importData.notes,
+              priority: importData.priority || "Charlie",
+              dueAt: importData.date,
+            });
+            imported.directives++;
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Unknown error";
+          imported.errors.push(`Row ${i + 1}: ${errorMsg}`);
+        }
+      }
+
+      res.json(imported);
+    } catch (error) {
+      console.error("Error importing from Excel:", error);
+      res.status(500).json({ error: "Failed to import from Excel" });
     }
   });
 

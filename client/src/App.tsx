@@ -9,6 +9,7 @@ import { Shell } from "@/components/Shell";
 import SituationRoom from "@/pages/SituationRoom";
 import Directives from "@/pages/Directives";
 import OpNotices from "@/pages/OpNotices";
+import Calendar from "@/pages/Calendar";
 import NotFound from "@/pages/not-found";
 import type { InsertDirective, InsertNotice } from "@shared/schema";
 
@@ -42,6 +43,7 @@ function Router() {
         <Route path="/" component={SituationRoom} />
         <Route path="/directives" component={Directives} />
         <Route path="/notices" component={OpNotices} />
+        <Route path="/calendar" component={Calendar} />
         <Route component={NotFound} />
       </Switch>
     </Shell>

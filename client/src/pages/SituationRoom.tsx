@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PriorityBadge } from "@/components/PriorityBadge";
+import { CalendarCard } from "@/components/CalendarCard";
 import { sortByPriority } from "@/lib/priority";
 import { formatDateTime, formatRelativeTime } from "@/lib/time";
 import type { Status, Directive, Notice, ChatMessage } from "@shared/schema";
@@ -145,8 +146,8 @@ export default function SituationRoom() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2">
-          {[...Array(2)].map((_, i) => (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
             <Card key={i} className="p-6">
               <Skeleton className="h-4 w-24 mb-2" />
               <Skeleton className="h-8 w-16 mb-1" />
@@ -185,7 +186,7 @@ export default function SituationRoom() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -282,6 +283,14 @@ export default function SituationRoom() {
                 </div>
               )}
             </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <CalendarCard />
           </motion.div>
         </div>
       </motion.div>
