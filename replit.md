@@ -4,11 +4,12 @@ A tactical military-themed command center application for managing operational d
 
 ## Project Overview
 
-Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features four main sections:
+Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features five main sections:
 - **Situation Room**: Dashboard with KPI metrics, operational status, and AI-powered tactical assistant
 - **Directives**: Task management with priority levels and completion tracking
 - **Op Notices**: Scheduled reminders with repeat options
 - **Calendar**: Unified timeline view of directives and notices with Excel import capability
+- **Resupply**: Shopping list management with store tracking and category filtering
 
 ## Tech Stack
 
@@ -48,6 +49,7 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
       Directives.tsx  - Task management page
       OpNotices.tsx   - Reminders page
       Calendar.tsx    - Calendar page with Excel import
+      Resupply.tsx    - Shopping list management page
     /lib
       time.ts         - Date/time utilities
       queryClient.ts  - TanStack Query setup
@@ -110,6 +112,19 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
   - Expected columns: type, title, notes, priority, at, dueAt, repeat
   - Response: `{ directives: number, notices: number, errors: string[] }`
 
+### Stores
+- `GET /api/stores` - Get all stores
+- `POST /api/stores` - Create new store
+  - Request body: `{ name: string }`
+- `DELETE /api/stores/:id` - Delete store
+
+### Resupply Items
+- `GET /api/resupply?storeId=&category=` - Get all resupply items (with optional filters)
+- `POST /api/resupply` - Create new resupply item
+  - Request body: `{ item: string, quantity: string, category: string, storeId: string }`
+- `PATCH /api/resupply/:id` - Update resupply item
+- `DELETE /api/resupply/:id` - Delete resupply item (also used when marking as purchased)
+
 ### Chat
 - `POST /api/chat` - Stream AI responses from tactical assistant
   - Request body: `{ messages: [{ role: "user" | "assistant" | "system", content: string }] }`
@@ -155,6 +170,29 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
   priority: "Alpha" | "Bravo" | "Charlie" | "Delta" | "Echo";
   at: string;  // ISO datetime (from dueAt for directives, at for notices)
   type: "directive" | "notice";
+}
+```
+
+### Store
+```typescript
+{
+  id: string;
+  name: string;
+  createdAt: string;
+}
+```
+
+### ResupplyItem
+```typescript
+{
+  id: string;
+  item: string;
+  quantity: string;
+  category: string;
+  storeId: string;
+  purchased: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
@@ -224,6 +262,27 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
   - Success summary with counts of imported directives and notices
 - **Dashboard Integration**: Calendar card on Situation Room showing next 5 upcoming events
 - **Quick Navigation**: Click calendar card to jump to full calendar view
+
+### Resupply
+- **Shopping List Management**: Add and track items needed for resupply
+- **Store Management**: 
+  - Create and manage stores dynamically
+  - Store dropdown in item form with quick-add button
+  - Newly created stores automatically selected in form
+- **Item Details**: Track item name, quantity, category, and assigned store
+- **Filtering**:
+  - Filter by Store: All Stores or specific store
+  - Filter by Category: All Categories or specific category
+  - Dynamic category list based on existing items
+- **Purchase Tracking**: 
+  - Mark items as purchased via checkbox
+  - Purchased items are immediately deleted from database
+- **CRUD Operations**:
+  - Add new items with full details
+  - Delete items with confirmation dialog
+  - Real-time list updates after operations
+- **Empty State**: Clear messaging when no items in list
+- **Toast Notifications**: Success feedback for all operations
 
 ### UI Features
 - Dark mode only (tactical theme)
