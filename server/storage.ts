@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { randomUUID } from "crypto";
-import type { Directive, Notice, InsertDirective, InsertNotice, Status, Store, InsertStore, ResupplyItem, InsertResupplyItem } from "@shared/schema";
+import type { Directive, Notice, InsertDirective, InsertNotice, Status, Store, InsertStore, Category, InsertCategory, ResupplyItem, InsertResupplyItem } from "@shared/schema";
 
 export interface IStorage {
   // Directives
@@ -23,8 +23,14 @@ export interface IStorage {
   createStore(store: InsertStore): Promise<Store>;
   deleteStore(id: string): Promise<void>;
 
+  // Categories
+  getCategories(): Promise<Category[]>;
+  getCategory(id: string): Promise<Category | undefined>;
+  createCategory(category: InsertCategory): Promise<Category>;
+  deleteCategory(id: string): Promise<void>;
+
   // Resupply Items
-  getResupplyItems(filters?: { storeId?: string; category?: string }): Promise<ResupplyItem[]>;
+  getResupplyItems(filters?: { storeId?: string; categoryId?: string }): Promise<ResupplyItem[]>;
   getResupplyItem(id: string): Promise<ResupplyItem | undefined>;
   createResupplyItem(item: InsertResupplyItem): Promise<ResupplyItem>;
   updateResupplyItem(id: string, updates: Partial<InsertResupplyItem> & { purchased?: boolean }): Promise<ResupplyItem>;
@@ -208,8 +214,43 @@ export class SqliteStorage implements IStorage {
     db.prepare("DELETE FROM stores WHERE id = ?").run(id);
   }
 
+  // Categories
+  private mapCategoryFromDb(row: any): Category {
+    return {
+      id: row.id,
+      name: row.name,
+      createdAt: row.created_at,
+    };
+  }
+
+  async getCategories(): Promise<Category[]> {
+    const rows = db.prepare("SELECT * FROM categories ORDER BY name ASC").all() as any[];
+    return rows.map(this.mapCategoryFromDb);
+  }
+
+  async getCategory(id: string): Promise<Category | undefined> {
+    const row = db.prepare("SELECT * FROM categories WHERE id = ?").get(id) as any;
+    return row ? this.mapCategoryFromDb(row) : undefined;
+  }
+
+  async createCategory(category: InsertCategory): Promise<Category> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO categories (id, name, created_at)
+      VALUES (?, ?, ?)
+    `).run(id, category.name, now);
+
+    return (await this.getCategory(id))!;
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+  }
+
   // Resupply Items
-  async getResupplyItems(filters?: { storeId?: string; category?: string }): Promise<ResupplyItem[]> {
+  async getResupplyItems(filters?: { storeId?: string; categoryId?: string }): Promise<ResupplyItem[]> {
     let query = "SELECT * FROM resupply_items WHERE purchased = 0";
     const params: any[] = [];
 
@@ -218,9 +259,9 @@ export class SqliteStorage implements IStorage {
       params.push(filters.storeId);
     }
 
-    if (filters?.category && filters.category !== "all") {
-      query += " AND category = ?";
-      params.push(filters.category);
+    if (filters?.categoryId && filters.categoryId !== "all") {
+      query += " AND category_id = ?";
+      params.push(filters.categoryId);
     }
 
     query += " ORDER BY created_at DESC";
@@ -239,13 +280,13 @@ export class SqliteStorage implements IStorage {
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO resupply_items (id, item, quantity, category, store_id, purchased, created_at, updated_at)
+      INSERT INTO resupply_items (id, item, quantity, category_id, store_id, purchased, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 0, ?, ?)
     `).run(
       id,
       item.item,
       item.quantity,
-      item.category,
+      item.categoryId,
       item.storeId,
       now,
       now
@@ -263,15 +304,15 @@ export class SqliteStorage implements IStorage {
     const now = new Date().toISOString();
     const item = updates.item ?? current.item;
     const quantity = updates.quantity ?? current.quantity;
-    const category = updates.category ?? current.category;
+    const categoryId = updates.categoryId ?? current.categoryId;
     const storeId = updates.storeId ?? current.storeId;
     const purchased = updates.purchased !== undefined ? (updates.purchased ? 1 : 0) : (current.purchased ? 1 : 0);
 
     db.prepare(`
       UPDATE resupply_items
-      SET item = ?, quantity = ?, category = ?, store_id = ?, purchased = ?, updated_at = ?
+      SET item = ?, quantity = ?, category_id = ?, store_id = ?, purchased = ?, updated_at = ?
       WHERE id = ?
-    `).run(item, quantity, category, storeId, purchased, now, id);
+    `).run(item, quantity, categoryId, storeId, purchased, now, id);
 
     return (await this.getResupplyItem(id))!;
   }
@@ -342,7 +383,7 @@ export class SqliteStorage implements IStorage {
       id: row.id,
       item: row.item,
       quantity: row.quantity,
-      category: row.category,
+      categoryId: row.category_id,
       storeId: row.store_id,
       purchased: row.purchased === 1,
       createdAt: row.created_at,
