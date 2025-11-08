@@ -199,35 +199,115 @@ function migrateResupplyTables() {
   if (needsResupplyMigration) {
     console.log("🔄 Migrating resupply_items table to use category_id...");
     
-    db.exec(`
-      BEGIN TRANSACTION;
-      
-      -- Create new resupply_items table with updated schema
-      CREATE TABLE resupply_items_new (
-        id TEXT PRIMARY KEY,
-        item TEXT NOT NULL,
-        quantity TEXT NOT NULL,
-        category_id TEXT NOT NULL,
-        store_id TEXT NOT NULL,
-        purchased INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
-        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-      );
-      
-      -- Note: We cannot migrate old data because old 'category' was a string
-      -- and we need a category_id reference. Old items will be lost.
-      -- If there's any data, we'll just drop it since this is a new feature.
-      
-      -- Drop old table and rename new one
-      DROP TABLE resupply_items;
-      ALTER TABLE resupply_items_new RENAME TO resupply_items;
-      
-      COMMIT;
-    `);
+    // Count existing items for verification
+    const oldItemCount = (db.prepare(`SELECT COUNT(*) as count FROM resupply_items`).get() as { count: number }).count;
+    console.log(`📊 Found ${oldItemCount} existing resupply items to migrate`);
     
-    console.log("✅ Resupply items table migrated successfully");
+    const now = new Date().toISOString();
+    
+    // Wrap entire migration in a transaction for atomicity
+    db.exec(`BEGIN TRANSACTION;`);
+    
+    try {
+      // Step 1: Extract unique category strings from existing resupply_items
+      const existingCategories = db.prepare(`
+        SELECT DISTINCT category FROM resupply_items WHERE category IS NOT NULL AND category != ''
+      `).all() as Array<{ category: string }>;
+      
+      // Step 2: Create fallback "Uncategorized" category for items with null/empty categories
+      const uncategorizedId = randomUUID();
+      const insertCategory = db.prepare(`
+        INSERT INTO categories (id, name, created_at) VALUES (?, ?, ?)
+      `);
+      
+      insertCategory.run(uncategorizedId, "Uncategorized", now);
+      
+      const categoryMap = new Map<string, string>();
+      categoryMap.set("", uncategorizedId); // Map empty string to Uncategorized
+      categoryMap.set(null as any, uncategorizedId); // Map null to Uncategorized
+      
+      // Step 3: Create category records for each unique non-empty category string
+      for (const { category } of existingCategories) {
+        const categoryId = randomUUID();
+        insertCategory.run(categoryId, category, now);
+        categoryMap.set(category, categoryId);
+      }
+      
+      console.log(`✅ Created ${existingCategories.length + 1} category records (including Uncategorized)`);
+      
+      // Step 4: Create new resupply_items table with updated schema
+      db.exec(`
+        CREATE TABLE resupply_items_new (
+          id TEXT PRIMARY KEY,
+          item TEXT NOT NULL,
+          quantity TEXT NOT NULL,
+          category_id TEXT NOT NULL,
+          store_id TEXT NOT NULL,
+          purchased INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+          FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+        );
+      `);
+      
+      // Step 5: Migrate each item by mapping category string to categoryId
+      const oldItems = db.prepare(`
+        SELECT * FROM resupply_items
+      `).all() as Array<{
+        id: string;
+        item: string;
+        quantity: string;
+        category: string | null;
+        store_id: string;
+        purchased: number;
+        created_at: string;
+        updated_at: string;
+      }>;
+      
+      const insertItem = db.prepare(`
+        INSERT INTO resupply_items_new (id, item, quantity, category_id, store_id, purchased, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      let migratedCount = 0;
+      for (const item of oldItems) {
+        // Get categoryId, defaulting to uncategorizedId if category is null/empty
+        const categoryId = categoryMap.get(item.category || "") || uncategorizedId;
+        
+        insertItem.run(
+          item.id,
+          item.item,
+          item.quantity,
+          categoryId,
+          item.store_id,
+          item.purchased,
+          item.created_at,
+          item.updated_at
+        );
+        migratedCount++;
+      }
+      
+      // Verify migration count matches
+      if (migratedCount !== oldItemCount) {
+        throw new Error(`Migration count mismatch: expected ${oldItemCount}, got ${migratedCount}`);
+      }
+      
+      console.log(`✅ Migrated ${migratedCount} resupply items (all data preserved)`);
+      
+      // Step 6: Drop old table and rename new one
+      db.exec(`
+        DROP TABLE resupply_items;
+        ALTER TABLE resupply_items_new RENAME TO resupply_items;
+      `);
+      
+      db.exec(`COMMIT;`);
+      console.log("✅ Resupply items table migrated successfully");
+    } catch (error) {
+      db.exec(`ROLLBACK;`);
+      console.error("❌ Migration failed, rolling back:", error);
+      throw error;
+    }
   } else if (!resupplyTableInfo) {
     // Table doesn't exist, create it with new schema
     db.exec(`
