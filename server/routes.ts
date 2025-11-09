@@ -506,7 +506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [
           {
             role: 'system',
-            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders). When users ask you to create these items, use the provided functions. If you need more information (like priority level, due date, or scheduling time), ask the user for those details before calling the function. Provide concise, professional responses using military terminology where appropriate.'
+            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
           },
           ...messages
         ],
@@ -519,6 +519,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if AI wants to call functions
       if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        const toolCall = responseMessage.tool_calls[0];
+        
+        if (toolCall.type === 'function') {
+          const functionName = toolCall.function.name;
+          const functionArgs = JSON.parse(toolCall.function.arguments);
+          
+          // Server-side validation: check for missing required fields
+          let missingInfo = null;
+          
+          if (functionName === "create_directive" && !functionArgs.priority) {
+            missingInfo = "I need to know the priority level for this directive. Please specify:\n\n• **Alpha** (Critical/Immediate)\n• **Bravo** (High priority, 24-48hr)\n• **Charlie** (Medium/Routine)\n• **Delta** (Low urgency)\n\nWhich priority level should I assign?";
+          } else if (functionName === "create_notice" && !functionArgs.at) {
+            missingInfo = "I need to know when this notice should be scheduled. Please provide a date and time (e.g., 'tomorrow at 9am', 'next Monday at 14:00', or '2024-12-25 at 10:30').";
+          }
+          
+          if (missingInfo) {
+            // Stream the clarification question instead of executing the function
+            res.write(missingInfo);
+            res.end();
+            return;
+          }
+        }
+        
         // Execute all tool calls
         const toolResults = [];
         
@@ -586,7 +609,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           messages: [
             {
               role: 'system',
-              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders). When users ask you to create these items, use the provided functions. If you need more information (like priority level, due date, or scheduling time), ask the user for those details before calling the function. Provide concise, professional responses using military terminology where appropriate.'
+              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
             },
             ...messages,
             responseMessage,
@@ -610,7 +633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           messages: [
             {
               role: 'system',
-              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders). When users ask you to create these items, use the provided functions. If you need more information (like priority level, due date, or scheduling time), ask the user for those details before calling the function. Provide concise, professional responses using military terminology where appropriate.'
+              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
             },
             ...messages
           ],
