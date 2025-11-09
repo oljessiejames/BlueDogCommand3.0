@@ -533,9 +533,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (functionName === "create_directive") {
               const directiveData = {
                 title: functionArgs.title,
-                notes: functionArgs.notes || null,
+                notes: functionArgs.notes ?? undefined,
                 priority: functionArgs.priority,
-                dueAt: functionArgs.dueAt || null,
+                dueAt: functionArgs.dueAt ?? undefined,
               };
               
               const validated = insertDirectiveSchema.parse(directiveData);
@@ -548,10 +548,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             } else if (functionName === "create_notice") {
               const noticeData = {
                 title: functionArgs.title,
-                notes: functionArgs.notes || null,
+                notes: functionArgs.notes ?? undefined,
                 priority: functionArgs.priority,
                 at: functionArgs.at,
-                repeat: functionArgs.repeat || "none",
+                repeat: functionArgs.repeat ?? "none",
               };
               
               const validated = insertNoticeSchema.parse(noticeData);
