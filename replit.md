@@ -4,10 +4,12 @@ A tactical military-themed command center application for managing operational d
 
 ## Project Overview
 
-Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features three main sections:
-- **Situation Room**: Dashboard with KPI metrics and operational status
+Blue Dog Command is a full-stack TypeScript application with a dark military theme designed for task and reminder management. The app features five main sections:
+- **Situation Room**: Dashboard with KPI metrics, operational status, and AI-powered tactical assistant
 - **Directives**: Task management with priority levels and completion tracking
 - **Op Notices**: Scheduled reminders with repeat options
+- **Calendar**: Unified timeline view of directives and notices with Excel import capability
+- **Resupply**: Shopping list management with store tracking and category filtering
 
 ## Tech Stack
 
@@ -25,6 +27,9 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Express (TypeScript with ESM modules)
 - SQLite via better-sqlite3 (data persistence)
 - Zod (validation)
+- OpenAI API (GPT-3.5-turbo for tactical AI assistant)
+- multer (file upload handling)
+- xlsx (Excel file parsing)
 
 ## Project Structure
 
@@ -36,11 +41,15 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
       KpiCard.tsx     - Dashboard metric cards
       DirectiveForm.tsx - Form for creating/editing tasks
       NoticeForm.tsx  - Form for creating/editing reminders
+      CalendarView.tsx - Reusable calendar view with time ranges
+      CalendarCard.tsx - Dashboard calendar preview card
       Empty.tsx       - Empty state component
     /pages
       SituationRoom.tsx - Dashboard page
       Directives.tsx  - Task management page
       OpNotices.tsx   - Reminders page
+      Calendar.tsx    - Calendar page with Excel import
+      Resupply.tsx    - Shopping list management page
     /lib
       time.ts         - Date/time utilities
       queryClient.ts  - TanStack Query setup
@@ -94,6 +103,34 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - `GET /api/status` - Dashboard metrics
 - `GET /api/health` - Health check
 
+### Calendar
+- `GET /api/calendar/events?from=<ISO>&to=<ISO>` - Get calendar events from directives and notices
+  - Returns array of CalendarEvent objects combining directives (with dueAt) and notices (with at)
+  - Response: `[{ id, title, notes, priority, at, type: "directive"|"notice" }]`
+- `POST /api/calendar/import` - Import events from Excel file
+  - Accepts multipart/form-data with Excel file
+  - Expected columns: type, title, notes, priority, at, dueAt, repeat
+  - Response: `{ directives: number, notices: number, errors: string[] }`
+
+### Stores
+- `GET /api/stores` - Get all stores
+- `POST /api/stores` - Create new store
+  - Request body: `{ name: string }`
+- `DELETE /api/stores/:id` - Delete store
+
+### Resupply Items
+- `GET /api/resupply?storeId=&category=` - Get all resupply items (with optional filters)
+- `POST /api/resupply` - Create new resupply item
+  - Request body: `{ item: string, quantity: string, category: string, storeId: string }`
+- `PATCH /api/resupply/:id` - Update resupply item
+- `DELETE /api/resupply/:id` - Delete resupply item (also used when marking as purchased)
+
+### Chat
+- `POST /api/chat` - Stream AI responses from tactical assistant
+  - Request body: `{ messages: [{ role: "user" | "assistant" | "system", content: string }] }`
+  - Response: Streaming text/plain with chunked transfer encoding
+  - Uses OpenAI GPT-3.5-turbo with tactical military system prompt
+
 ## Data Models
 
 ### Directive
@@ -124,6 +161,41 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 }
 ```
 
+### CalendarEvent
+```typescript
+{
+  id: string;
+  title: string;
+  notes: string | null;
+  priority: "Alpha" | "Bravo" | "Charlie" | "Delta" | "Echo";
+  at: string;  // ISO datetime (from dueAt for directives, at for notices)
+  type: "directive" | "notice";
+}
+```
+
+### Store
+```typescript
+{
+  id: string;
+  name: string;
+  createdAt: string;
+}
+```
+
+### ResupplyItem
+```typescript
+{
+  id: string;
+  item: string;
+  quantity: string;
+  category: string;
+  storeId: string;
+  purchased: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
 ## Features
 
 ### Situation Room (Dashboard)
@@ -132,6 +204,19 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Total directives count
 - Upcoming notices count
 - Operational status display
+- **Tactical AI Assistant** (OpenAI GPT-3.5-turbo)
+  - Real-time streaming chat interface
+  - Military-themed AI responses
+  - **AI-powered directive and notice creation** via OpenAI function calling
+    - Can create directives (tasks) when requested
+    - Can create notices (reminders) when requested
+    - Intelligently asks for missing information (priority, due date, scheduling time)
+    - Automatically validates and creates items via API
+  - Assistance with mission planning, directive prioritization, and operational insights
+  - Robust error handling for API failures
+  - Auto-scroll to latest messages
+  - Conversation history maintained in session
+  - **Auto-refresh**: Data automatically refreshes after AI responses to show newly created items
 
 ### Directives
 - Create/edit/delete tasks
@@ -163,6 +248,41 @@ Blue Dog Command is a full-stack TypeScript application with a dark military the
 - Timeline view sorted by scheduled time
 - Upcoming/past indicators
 - Priority badges with hover tooltips showing descriptions
+
+### Calendar
+- **Unified Timeline View**: Combines directives (with due dates) and notices into single calendar view
+- **Time Range Selector**: Switch between 1, 3, 7, 14, or 30 day views (default: 7 days)
+- **Event Grouping**: Events grouped by date with chronological sorting
+- **Priority Display**: Color-coded priority badges for all events
+- **Event Types**: Visual distinction between directives and notices
+- **Excel Import**: 
+  - Bulk import events from Excel spreadsheets
+  - Expected columns: type, title, notes, priority, at, dueAt, repeat
+  - Validation and error reporting for each row
+  - Success summary with counts of imported directives and notices
+- **Dashboard Integration**: Calendar card on Situation Room showing next 5 upcoming events
+- **Quick Navigation**: Click calendar card to jump to full calendar view
+
+### Resupply
+- **Shopping List Management**: Add and track items needed for resupply
+- **Store Management**: 
+  - Create and manage stores dynamically
+  - Store dropdown in item form with quick-add button
+  - Newly created stores automatically selected in form
+- **Item Details**: Track item name, quantity, category, and assigned store
+- **Filtering**:
+  - Filter by Store: All Stores or specific store
+  - Filter by Category: All Categories or specific category
+  - Dynamic category list based on existing items
+- **Purchase Tracking**: 
+  - Mark items as purchased via checkbox
+  - Purchased items are immediately deleted from database
+- **CRUD Operations**:
+  - Add new items with full details
+  - Delete items with confirmation dialog
+  - Real-time list updates after operations
+- **Empty State**: Clear messaging when no items in list
+- **Toast Notifications**: Success feedback for all operations
 
 ### UI Features
 - Dark mode only (tactical theme)
