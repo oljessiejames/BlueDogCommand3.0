@@ -492,6 +492,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
               required: ["title", "priority", "at"]
             }
           }
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "list_stores",
+            description: "Get all existing stores in the resupply system. Use this to check if a store already exists before creating a new one.",
+            parameters: {
+              type: "object",
+              properties: {},
+              required: []
+            }
+          }
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "list_categories",
+            description: "Get all existing categories in the resupply system. Use this to check if a category already exists before creating a new one.",
+            parameters: {
+              type: "object",
+              properties: {},
+              required: []
+            }
+          }
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "create_store",
+            description: "Create a new store in the resupply system. Stores are used to organize shopping lists by location (e.g., 'Home Depot', 'Costco', 'Amazon'). Always check existing stores with list_stores first to avoid duplicates.",
+            parameters: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "The store name (required, e.g., 'Home Depot', 'Costco')"
+                }
+              },
+              required: ["name"]
+            }
+          }
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "create_category",
+            description: "Create a new category in the resupply system. Categories are used to organize items (e.g., 'Hardware', 'Food', 'Electronics', 'Office Supplies'). Always check existing categories with list_categories first to avoid duplicates.",
+            parameters: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "The category name (required, e.g., 'Hardware', 'Food')"
+                }
+              },
+              required: ["name"]
+            }
+          }
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "create_resupply_item",
+            description: "Add an item to the resupply list (shopping list). If the store or category doesn't exist yet, create them first using create_store and create_category.",
+            parameters: {
+              type: "object",
+              properties: {
+                item: {
+                  type: "string",
+                  description: "The item name (required, e.g., 'Batteries AA', 'Coffee beans')"
+                },
+                quantity: {
+                  type: "string",
+                  description: "The quantity needed (required, e.g., '2 packs', '1 box', '5 lbs')"
+                },
+                categoryId: {
+                  type: "string",
+                  description: "The category ID this item belongs to (required - must be a valid category ID)"
+                },
+                storeId: {
+                  type: "string",
+                  description: "The store ID where this item should be purchased (required - must be a valid store ID)"
+                }
+              },
+              required: ["item", "quantity", "categoryId", "storeId"]
+            }
+          }
         }
       ];
 
@@ -506,7 +593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [
           {
             role: 'system',
-            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
+            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, you need a store and category. If the user mentions a new store or category that doesn\'t exist, create it first, then use its ID when creating the resupply item.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
           },
           ...messages
         ],
@@ -553,7 +640,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           let result;
           try {
-            if (functionName === "create_directive") {
+            if (functionName === "list_stores") {
+              const stores = await storage.getStores();
+              result = {
+                success: true,
+                stores,
+                message: stores.length > 0 
+                  ? `Found ${stores.length} store(s): ${stores.map(s => `${s.name} (ID: ${s.id})`).join(', ')}`
+                  : "No stores found in the system"
+              };
+            } else if (functionName === "list_categories") {
+              const categories = await storage.getCategories();
+              result = {
+                success: true,
+                categories,
+                message: categories.length > 0
+                  ? `Found ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}: ${categories.map(c => `${c.name} (ID: ${c.id})`).join(', ')}`
+                  : "No categories found in the system"
+              };
+            } else if (functionName === "create_directive") {
               const directiveData = {
                 title: functionArgs.title,
                 notes: functionArgs.notes ?? undefined,
@@ -584,6 +689,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 notice,
                 message: `Notice created successfully: "${notice.title}" scheduled for ${new Date(notice.at).toLocaleString()}`
               };
+            } else if (functionName === "create_store") {
+              const storeData = {
+                name: functionArgs.name,
+              };
+              
+              const validated = insertStoreSchema.parse(storeData);
+              const store = await storage.createStore(validated);
+              result = {
+                success: true,
+                store,
+                message: `Store "${store.name}" created successfully with ID: ${store.id}`
+              };
+            } else if (functionName === "create_category") {
+              const categoryData = {
+                name: functionArgs.name,
+              };
+              
+              const validated = insertCategorySchema.parse(categoryData);
+              const category = await storage.createCategory(validated);
+              result = {
+                success: true,
+                category,
+                message: `Category "${category.name}" created successfully with ID: ${category.id}`
+              };
+            } else if (functionName === "create_resupply_item") {
+              const itemData = {
+                item: functionArgs.item,
+                quantity: functionArgs.quantity,
+                categoryId: functionArgs.categoryId,
+                storeId: functionArgs.storeId,
+              };
+              
+              const validated = insertResupplyItemSchema.parse(itemData);
+              const resupplyItem = await storage.createResupplyItem(validated);
+              result = {
+                success: true,
+                resupplyItem,
+                message: `Added "${resupplyItem.item}" (${resupplyItem.quantity}) to resupply list`
+              };
             } else {
               result = { success: false, error: "Unknown function" };
             }
@@ -609,7 +753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           messages: [
             {
               role: 'system',
-              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
+              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, you need a store and category. If the user mentions a new store or category that doesn\'t exist, create it first, then use its ID when creating the resupply item.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
             },
             ...messages,
             responseMessage,
@@ -633,7 +777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           messages: [
             {
               role: 'system',
-              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks) and operational notices (reminders).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
+              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, you need a store and category. If the user mentions a new store or category that doesn\'t exist, create it first, then use its ID when creating the resupply item.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
             },
             ...messages
           ],
