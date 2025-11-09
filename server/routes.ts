@@ -555,7 +555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           type: "function" as const,
           function: {
             name: "create_resupply_item",
-            description: "Add an item to the resupply list (shopping list). If the store or category doesn't exist yet, create them first using create_store and create_category.",
+            description: "Add an item to the resupply list (shopping list). Provide the store name and category name - the system will automatically create them if they don't exist, or reuse existing ones if they do.",
             parameters: {
               type: "object",
               properties: {
@@ -567,16 +567,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   type: "string",
                   description: "The quantity needed (required, e.g., '2 packs', '1 box', '5 lbs')"
                 },
-                categoryId: {
+                categoryName: {
                   type: "string",
-                  description: "The category ID this item belongs to (required - must be a valid category ID)"
+                  description: "The category name (required, e.g., 'Groceries', 'Hardware', 'Electronics'). Will be created if it doesn't exist."
                 },
-                storeId: {
+                storeName: {
                   type: "string",
-                  description: "The store ID where this item should be purchased (required - must be a valid store ID)"
+                  description: "The store name (required, e.g., 'Costco', 'Home Depot', 'Target'). Will be created if it doesn't exist."
                 }
               },
-              required: ["item", "quantity", "categoryId", "storeId"]
+              required: ["item", "quantity", "categoryName", "storeName"]
             }
           }
         }
@@ -587,52 +587,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Transfer-Encoding', 'chunked');
       streamingStarted = true;
 
-      // Create initial completion with tools
-      const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, you need a store and category. If the user mentions a new store or category that doesn\'t exist, create it first, then use its ID when creating the resupply item.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
-          },
-          ...messages
-        ],
-        tools,
-        tool_choice: "auto",
-        temperature: 0.7,
-      });
+      // Build conversation history
+      const conversationMessages = [
+        {
+          role: 'system' as const,
+          content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, use create_resupply_item with the item name, quantity, store name, and category name. The system will automatically create stores and categories if they don\'t exist.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
+        },
+        ...messages
+      ];
 
-      const responseMessage = response.choices[0].message;
-
-      // Check if AI wants to call functions
-      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-        const toolCall = responseMessage.tool_calls[0];
+      // Allow multiple rounds of function calling
+      let maxIterations = 5; // Prevent infinite loops
+      let currentIteration = 0;
+      
+      while (currentIteration < maxIterations) {
+        currentIteration++;
         
-        if (toolCall.type === 'function') {
-          const functionName = toolCall.function.name;
-          const functionArgs = JSON.parse(toolCall.function.arguments);
+        // Create completion with tools
+        const response = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: conversationMessages,
+          tools,
+          tool_choice: "auto",
+          temperature: 0.7,
+        });
+
+        const responseMessage = response.choices[0].message;
+
+        // Check if AI wants to call functions
+        if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+          const toolCall = responseMessage.tool_calls[0];
           
-          // Server-side validation: check for missing required fields
-          let missingInfo = null;
-          
-          if (functionName === "create_directive" && !functionArgs.priority) {
-            missingInfo = "I need to know the priority level for this directive. Please specify:\n\n• **Alpha** (Critical/Immediate)\n• **Bravo** (High priority, 24-48hr)\n• **Charlie** (Medium/Routine)\n• **Delta** (Low urgency)\n\nWhich priority level should I assign?";
-          } else if (functionName === "create_notice" && !functionArgs.at) {
-            missingInfo = "I need to know when this notice should be scheduled. Please provide a date and time (e.g., 'tomorrow at 9am', 'next Monday at 14:00', or '2024-12-25 at 10:30').";
+          if (toolCall.type === 'function') {
+            const functionName = toolCall.function.name;
+            const functionArgs = JSON.parse(toolCall.function.arguments);
+            
+            // Server-side validation: check for missing required fields
+            let missingInfo = null;
+            
+            if (functionName === "create_directive" && !functionArgs.priority) {
+              missingInfo = "I need to know the priority level for this directive. Please specify:\n\n• **Alpha** (Critical/Immediate)\n• **Bravo** (High priority, 24-48hr)\n• **Charlie** (Medium/Routine)\n• **Delta** (Low urgency)\n\nWhich priority level should I assign?";
+            } else if (functionName === "create_notice" && !functionArgs.at) {
+              missingInfo = "I need to know when this notice should be scheduled. Please provide a date and time (e.g., 'tomorrow at 9am', 'next Monday at 14:00', or '2024-12-25 at 10:30').";
+            }
+            
+            if (missingInfo) {
+              // Stream the clarification question instead of executing the function
+              res.write(missingInfo);
+              res.end();
+              return;
+            }
           }
           
-          if (missingInfo) {
-            // Stream the clarification question instead of executing the function
-            res.write(missingInfo);
-            res.end();
-            return;
-          }
-        }
-        
-        // Execute all tool calls
-        const toolResults = [];
-        
-        for (const toolCall of responseMessage.tool_calls) {
+          // Execute all tool calls
+          const toolResults = [];
+          
+          for (const toolCall of responseMessage.tool_calls) {
           if (toolCall.type !== 'function') continue;
           
           const functionName = toolCall.function.name;
@@ -640,6 +650,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           let result;
           try {
+            console.log(`[AI Function Call] ${functionName}`, functionArgs);
+            
             if (functionName === "list_stores") {
               const stores = await storage.getStores();
               result = {
@@ -714,11 +726,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 message: `Category "${category.name}" created successfully with ID: ${category.id}`
               };
             } else if (functionName === "create_resupply_item") {
+              // Handle name-based creation (find or create store/category by name)
+              const storeName = functionArgs.storeName;
+              const categoryName = functionArgs.categoryName;
+              
+              // Find or create store
+              let store;
+              const stores = await storage.getStores();
+              store = stores.find(s => s.name.toLowerCase() === storeName.toLowerCase());
+              
+              if (!store) {
+                store = await storage.createStore({ name: storeName });
+                console.log(`Created new store: ${store.name} (ID: ${store.id})`);
+              } else {
+                console.log(`Reusing existing store: ${store.name} (ID: ${store.id})`);
+              }
+              
+              // Find or create category
+              let category;
+              const categories = await storage.getCategories();
+              category = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+              
+              if (!category) {
+                category = await storage.createCategory({ name: categoryName });
+                console.log(`Created new category: ${category.name} (ID: ${category.id})`);
+              } else {
+                console.log(`Reusing existing category: ${category.name} (ID: ${category.id})`);
+              }
+              
+              // Create resupply item with found/created IDs
               const itemData = {
                 item: functionArgs.item,
                 quantity: functionArgs.quantity,
-                categoryId: functionArgs.categoryId,
-                storeId: functionArgs.storeId,
+                categoryId: category.id,
+                storeId: store.id,
               };
               
               const validated = insertResupplyItemSchema.parse(itemData);
@@ -726,7 +767,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               result = {
                 success: true,
                 resupplyItem,
-                message: `Added "${resupplyItem.item}" (${resupplyItem.quantity}) to resupply list`
+                message: `Added "${resupplyItem.item}" (${resupplyItem.quantity}) to ${store.name} under ${category.name}`
               };
             } else {
               result = { success: false, error: "Unknown function" };
@@ -739,6 +780,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             };
           }
           
+          console.log(`[AI Function Result] ${functionName}:`, result);
+          
           toolResults.push({
             tool_call_id: toolCall.id,
             role: "tool" as const,
@@ -747,55 +790,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Get final response from AI after function execution
-        const finalResponse = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, you need a store and category. If the user mentions a new store or category that doesn\'t exist, create it first, then use its ID when creating the resupply item.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
-            },
-            ...messages,
-            responseMessage,
-            ...toolResults
-          ],
-          stream: true,
-          temperature: 0.7,
-        });
-
-        // Stream the final response
-        for await (const chunk of finalResponse) {
-          const content = chunk.choices[0]?.delta?.content || '';
-          if (content) {
-            res.write(content);
-          }
-        }
+        // Add assistant message and tool results to conversation
+        conversationMessages.push(responseMessage);
+        conversationMessages.push(...toolResults);
+        
+        // Continue loop to allow AI to make more function calls or respond
       } else {
-        // No function calls, just stream the regular response
-        const stream = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a tactical AI assistant for Blue Dog Command, a military-themed command center. You can help users create directives (tasks), operational notices (reminders), and manage resupply lists (shopping lists).\n\nIMPORTANT RULES:\n- When creating a directive, you MUST ask the user for the priority level (Alpha, Bravo, Charlie, or Delta) if they did not specify it. DO NOT assume or choose a priority on their behalf.\n- When creating a directive, you SHOULD ask the user if they want to set a due date unless they explicitly said they don\'t need one.\n- When creating a notice, you MUST ask for the scheduled time if not provided.\n- When adding items to the resupply list, you need a store and category. If the user mentions a new store or category that doesn\'t exist, create it first, then use its ID when creating the resupply item.\n- You can create multiple items in sequence by calling the functions multiple times.\n- Only call the creation functions after you have all required information from the user.\n\nProvide concise, professional responses using military terminology where appropriate.'
-            },
-            ...messages
-          ],
-          tools,
-          tool_choice: "auto",
-          stream: true,
-          temperature: 0.7,
-        });
-
-        for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || '';
-          if (content) {
-            res.write(content);
-          }
+        // No function calls - AI wants to respond with text
+        // Stream the text response
+        if (responseMessage.content) {
+          res.write(responseMessage.content);
         }
+        break; // Exit loop
       }
+    }
 
-      res.end();
+    res.end();
     } catch (error) {
       console.error("Error in chat:", error);
       
